@@ -32,6 +32,60 @@ func unavailable(t testing.TB, err error) {
 	t.Skip("no Metal:", err)
 }
 
+// needSpecialized skips a test of the specialized pipelines on a GPU that has
+// none (canSpecialize).
+func needSpecialized(t *testing.T, r *Renderer) {
+	t.Helper()
+	if !r.canSpecialize {
+		t.Skip("the GPU draws with the general pipeline alone")
+	}
+}
+
+// TestOlderGPUsDrawWithTheGeneralPipeline checks that a renderer whose GPU
+// is older than Metal's Mac2 family (#1566) warms no specialized pipeline,
+// draws every class with the general one, compiling none, and keeps its
+// batches together, and that one in the family warms them.
+func TestOlderGPUsDrawWithTheGeneralPipeline(t *testing.T) {
+	older, mac2 := &Renderer{}, &Renderer{canSpecialize: true}
+	for _, format := range []uint{pixelFormatBGRA8Unorm, pixelFormatRGBA16Float} {
+		if keys := older.warmSet(format); len(keys) != 0 {
+			t.Errorf("format %d: an older GPU warms %d pipelines", format, len(keys))
+		}
+		if len(mac2.warmSet(format)) == 0 {
+			t.Errorf("format %d: a GPU of the Mac2 family warms no pipeline", format)
+		}
+		for cl := range uint32(1 << gpu.NumClasses) {
+			for _, mode := range []blendMode{blendOver, blendNone, blendHole} {
+				if older.specializable(format, cl, mode) {
+					t.Errorf("format %d: an older GPU specializes the classes %b blended as %d", format, cl, mode)
+				}
+			}
+		}
+	}
+	if !mac2.specializable(pixelFormatBGRA8Unorm, 1<<gpu.ClassPlain, blendOver) {
+		t.Error("a GPU of the Mac2 family does not specialize plain fills")
+	}
+
+	r, err := newRenderer()
+	if err != nil {
+		unavailable(t, err)
+	}
+	defer r.Release()
+	r.canSpecialize, r.b.Classes = false, false // as newRenderer leaves an older GPU's
+	renderRaw(t, r, gputest.BoxesScene(640, 400, 120, false), false)
+	for _, b := range r.b.Batches {
+		if b.Class != gpu.ClassGeneral || b.Joined != 0 {
+			t.Fatalf("a batch of class %d (joined %b) on an older GPU", b.Class, b.Joined)
+		}
+	}
+	r.pipes.mu.Lock()
+	queued, fallbacks := len(r.pipes.queued), r.pipes.fallbacks
+	r.pipes.mu.Unlock()
+	if built, failed := r.pipelineCounts(); built != 0 || failed != 0 || queued != 0 || fallbacks != 0 {
+		t.Errorf("an older GPU built %d specialized pipelines (%d failed, %d queued, %d batches awaiting one)", built, failed, queued, fallbacks)
+	}
+}
+
 func init() {
 	// Tests compare the specialized pipelines with the general ones, so frames
 	// make the pipelines they need first (TestFramesNeverWaitForACompile
@@ -548,6 +602,7 @@ func TestClassesDrawTheSamePixels(t *testing.T) {
 		unavailable(t, err)
 	}
 	defer r.Release()
+	needSpecialized(t, r)
 	var seen [gpu.NumClasses]int
 	joined := map[uint32]int{}
 	for _, wide := range []bool{false, true} {
@@ -590,7 +645,7 @@ func TestClassesDrawTheSamePixels(t *testing.T) {
 		// The test proves nothing if a specialized pipeline did not build and
 		// the frames drew with the general one in its place.
 		cl := gpu.Class(k)
-		if cl != gpu.ClassGeneral && specializable(pixelFormatBGRA8Unorm, 1<<cl, blendOver) &&
+		if cl != gpu.ClassGeneral && r.specializable(pixelFormatBGRA8Unorm, 1<<cl, blendOver) &&
 			!r.usedSpecialized(pipeKey{pixelFormatBGRA8Unorm, 1 << cl, false, blendOver}) && !r.usedSpecialized(pipeKey{pixelFormatBGRA8Unorm, 1 << cl, true, blendOver}) {
 			t.Errorf("class %d drew with no specialized pipeline", k)
 		}
@@ -755,6 +810,7 @@ func TestFramesNeverWaitForACompile(t *testing.T) {
 		unavailable(t, err)
 	}
 	defer r.Release()
+	needSpecialized(t, r)
 	waitStarted, resume := holdPipelineBuilds(t, r)
 	defer resume() // unblock the worker before Release, including on a failed test
 	s := gputest.OpaqueScene(900, 700)
@@ -1105,6 +1161,7 @@ func TestReleaseStopsQueuedPipelineCompiles(t *testing.T) {
 		unavailable(t, err)
 	}
 	defer r.Release()
+	needSpecialized(t, r)
 	waitStarted, resume := holdPipelineBuilds(t, r)
 	defer resume()
 	renderRaw(t, r, gputest.Scene(), false)

@@ -5141,7 +5141,12 @@ either.
     cached per device, outside the frame path. Renderer release stops and
     joins that worker before releasing its shader library. Float16 shadows
     stay general, and fills with fractional opacity avoid the plain class,
-    because specialization otherwise changes rounding. Function constant
+    because specialization otherwise changes rounding. GPUs outside
+    Metal's Mac2 family (`supportsFamily:`), as Intel's Haswell, draw every
+    batch with the general pipeline, compiling and warming none, and keep
+    their batches together: one such GPU, on a driver backported by
+    OpenCore Legacy Patcher, hung while specialized pipelines compiled
+    (#1566). Function constant
     indices 0 through 7 belong to the renderer; effects start their own at 8.
     Two seconds after the last frame, as the
     driver frees its own memory of frames, a timer shrinks the drawables,
