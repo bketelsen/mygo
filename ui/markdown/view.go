@@ -50,6 +50,13 @@ type Options struct {
 	// AnchorVersion scrolls to Anchor again when it changes, for the same
 	// heading asked for twice.
 	AnchorVersion uint64
+	// AnchorBlock optionally resolves an anchor to a block index. Return -1
+	// to use the heading resolver. The document belongs to this view.
+	AnchorBlock func(d *parser.Document, name string) int
+	// OnTask handles activation of a task checkbox. line is its 1-based source
+	// line in this view's Markdown, and checked is the requested next state.
+	// Without it task markers are read-only.
+	OnTask func(line int, checked bool)
 	// Resolve, when set, makes mentions (@octocat) and references to
 	// issues and pull requests (#123) links: it returns where one goes,
 	// which OnLink, or else the router or a ui.Link, opens, as a path of
@@ -298,7 +305,7 @@ func build(c *ui.Context, src string, o *Options, streaming bool) ui.Element {
 	}
 	st.doc.Set(src[:shown])
 	if o.Anchor != "" && (documentChanged || st.anchor != o.Anchor || st.anchorVersion != o.AnchorVersion) {
-		st.scrollTo = st.headingNamed(strings.TrimPrefix(o.Anchor, "#"))
+		st.scrollTo = st.anchorNamed(strings.TrimPrefix(o.Anchor, "#"))
 	}
 	st.anchor, st.anchorVersion = o.Anchor, o.AnchorVersion
 	st.fade = st.reveal.fader(c, o.Reveal)
@@ -654,7 +661,7 @@ func (st *viewState) link(c *ui.Context, in *parser.Inline, children func()) {
 	case strings.HasPrefix(dest, "#"):
 		l = ui.Link(c, "", "")
 		if l.Clicked() {
-			st.scrollTo = st.headingNamed(dest[1:])
+			st.scrollTo = st.anchorNamed(dest[1:])
 		}
 	case linkAllowed(dest, c.Router() != nil):
 		l = ui.Link(c, "", dest)
@@ -792,6 +799,17 @@ func (st *viewState) marker(c *ui.Context, list, item *parser.Block, n, depth in
 			lineH := th.FontSize * th.LineHeight * 1.2
 			checked := item.Task == parser.Checked
 			cb := ui.Box(c).Size(size, size).Radius(max(3, size/5)).Margin(max(0, (lineH-size)/2-1), 0, 0, 0).Role(ui.RoleCheckBox).Checked(checked)
+			if st.o.OnTask != nil {
+				label := "Mark task done"
+				if checked {
+					label = "Mark task not done"
+				}
+				cb.Focusable().Cursor(ui.CursorPointer).Label(label)
+				if cb.Clicked() {
+					line := strings.Count(st.doc.Source()[:item.Start], "\n") + 1
+					st.o.OnTask(line, !checked)
+				}
+			}
 			if checked {
 				cb.Background(th.Checkbox).Draw(func(p *ui.Painter, r ui.Rect) {
 					path := &ui.Path{}
@@ -857,4 +875,13 @@ func (st *viewState) footnotes(c *ui.Context) {
 			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).TextColor(th.Muted).Children(func() { st.blocks(c, i, false, base) })
 		})
 	}
+}
+
+func (st *viewState) anchorNamed(name string) int {
+	if st.o.AnchorBlock != nil {
+		if i := st.o.AnchorBlock(st.doc, name); i > 0 && i < st.doc.Len() {
+			return i
+		}
+	}
+	return st.headingNamed(name)
 }
