@@ -27,8 +27,11 @@ took what was typed, and clears it, as it clears the input, when a token
 is added. What an input method is composing comes once committed, as in a
 text input's value. `Changed`, asked after `Query`, reports a change of the
 text too, as it does of the tokens. The app passes what it finds as the
-suggestions of a later build, which shows those containing the text, as
-it shows any.
+suggestions of a later build, and matches them itself: the field shows
+them as given, in their order, leaving out only those already tokens,
+rather than those containing the text, so that a lookup that folds
+accents can suggest Émile for "emile". They show until the app passes
+others.
 
 To look up only once the user pauses in typing, note when `Changed`
 reported a change and, until the lookup, ask `c.After` for a frame at the
@@ -49,7 +52,7 @@ if app.query != app.asked {
 		app.asked = app.query
 		q := app.query
 		go func() {
-			found := app.book.Suggest(q)
+			found := app.book.Suggest(q) // shown as given: "emile" finds Émile
 			win.Update(func() {
 				if q == app.asked { // no newer lookup started since
 					app.found = found

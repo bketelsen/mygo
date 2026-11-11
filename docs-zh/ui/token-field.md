@@ -12,7 +12,7 @@ ui.TokenField(c, &app.tags, allTags).Label("Tags")
 
 ## 随输入给出建议
 
-`Query` 把一个 `*string` 绑定（binding）到正在输入的文本，供应用据此查找建议，例如在服务器上的通讯录中查找邮件收件人。调用 `Query` 时，字段已经处理完用户的输入，会把文本写入其中；添加一项时，它会像清空输入框一样清空这段文本。输入法正在组合的内容要等提交后才会写入，与文本输入的值一样。在 `Query` 之后调用 `Changed`，它也会报告文本的变化，就像报告各项的变化一样。应用把查到的结果作为之后某次构建的建议传入，字段会像对待任何建议一样，只显示其中包含该文本的那些。
+`Query` 把一个 `*string` 绑定（binding）到正在输入的文本，供应用据此查找建议，例如在服务器上的通讯录中查找邮件收件人。调用 `Query` 时，字段已经处理完用户的输入，会把文本写入其中；添加一项时，它会像清空输入框一样清空这段文本。输入法正在组合的内容要等提交后才会写入，与文本输入的值一样。在 `Query` 之后调用 `Changed`，它也会报告文本的变化，就像报告各项的变化一样。应用把查到的结果作为之后某次构建的建议传入，并由应用自己负责匹配：字段按给出的顺序原样显示这些建议，只排除已添加的项，而不是只显示包含该文本的那些。这样，忽略重音的查找就可以为“emile”给出 Émile。在应用传入新的建议之前，字段会一直显示它们。
 
 要等用户停止输入片刻后再查找，就记下 `Changed` 报告变化的时间，并在查找之前的每一帧里用 `c.After` 请求停顿结束时的一帧：每一帧都要重新请求它需要的帧。
 
@@ -30,7 +30,7 @@ if app.query != app.asked {
 		app.asked = app.query
 		q := app.query
 		go func() {
-			found := app.book.Suggest(q)
+			found := app.book.Suggest(q) // shown as given: "emile" finds Émile
 			win.Update(func() {
 				if q == app.asked { // no newer lookup started since
 					app.found = found

@@ -217,26 +217,99 @@ func TestTokenFieldQueryDebounced(t *testing.T) {
 	}
 }
 
+// TestTokenFieldQuerySuggestionsAsGiven passes suggestions the app matched
+// itself, as a lookup folding accents does, none of them containing the
+// text: once Query is bound, from the frame that binds it, the field shows
+// them as given, in their order, leaving out only those already tokens,
+// and they are chosen as any.
+func TestTokenFieldQuerySuggestionsAsGiven(t *testing.T) {
+	emile, nolde, ada := "Émile Zola <ezola@example.com>", "Emil Nolde <nolde@example.com>", "Ada Lovelace <ada@example.com>"
+	to := []string{ada}
+	var query string
+	var found []string
+	bind := false
+	tt := ui.NewTester(func(c *ui.Context) {
+		f := ui.TokenField(c, &to, found).Label("To").Width(360)
+		if bind {
+			f.Query(&query)
+		}
+	}, 500, 400)
+	if err := tt.Click("To"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Type("emile")
+	found = []string{nolde, ada, emile}
+	tt.Frame()
+	if tt.HasText(emile) || tt.HasText(nolde) {
+		t.Fatalf("without Query, suggestions not containing emile show: %q", tt.Texts())
+	}
+	bind = true
+	tt.Frame()
+	texts := tt.Texts()
+	if n, e := slices.Index(texts, nolde), slices.Index(texts, emile); n < 0 || e < n {
+		t.Fatalf("with Query, the suggestions show as %q, want %q then %q", texts, nolde, emile)
+	}
+	if n := countOf(texts, ada); n != 1 {
+		t.Fatalf("%s, a token, shows %d times: %q", ada, n, texts)
+	}
+	if query != "emile" {
+		t.Fatalf("query %q", query)
+	}
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyEnter)
+	if !slices.Equal(to, []string{ada, emile}) || query != "" {
+		t.Fatalf("Enter on the second: tokens %q, query %q", to, query)
+	}
+	tt.Type("emil")
+	if err := tt.Click(nolde); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	if !slices.Equal(to, []string{ada, emile, nolde}) || query != "" {
+		t.Fatalf("a click: tokens %q, query %q", to, query)
+	}
+}
+
+// countOf returns how many of texts are s.
+func countOf(texts []string, s string) int {
+	n := 0
+	for _, t := range texts {
+		if t == s {
+			n++
+		}
+	}
+	return n
+}
+
 // TestTokenFieldWithoutQuery checks that a field without Query reports
-// only changes of its tokens, as before Query.
+// only changes of its tokens, and shows the suggestions containing the
+// text, those starting with it first, as before Query.
 func TestTokenFieldWithoutQuery(t *testing.T) {
+	emile := "Émile Zola <ezola@example.com>"
 	tags, changes := []string{}, 0
 	tt := ui.NewTester(func(c *ui.Context) {
-		if ui.TokenField(c, &tags, []string{"zig"}).Label("Tags").Width(360).Changed() {
+		if ui.TokenField(c, &tags, []string{emile, "rust", "zig"}).Label("Tags").Width(360).Changed() {
 			changes++
 		}
 	}, 500, 400)
 	if err := tt.Click("Tags"); err != nil {
 		t.Fatal(err)
 	}
+	tt.Type("emile")
+	if tt.HasText(emile) {
+		t.Fatalf("emile suggests %q", tt.Texts())
+	}
+	for range 5 {
+		tt.Key(0, ui.KeyBackspace)
+	}
 	tt.Type("zx")
 	tt.Key(0, ui.KeyBackspace)
-	tt.Type("i")
 	if changes != 0 {
 		t.Fatalf("typing reported %d changes", changes)
 	}
-	if !tt.HasText("zig") {
-		t.Fatalf("zi suggests %q", tt.Texts())
+	texts := tt.Texts()
+	if z, e := slices.Index(texts, "zig"), slices.Index(texts, emile); z < 0 || e < z || slices.Contains(texts, "rust") {
+		t.Fatalf("z suggests %q, want zig, then %s", texts, emile)
 	}
 	tt.Key(0, ui.KeyDown)
 	tt.Key(0, ui.KeyEnter)

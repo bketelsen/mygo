@@ -506,7 +506,7 @@ func magnifier(c *context) *node {
 // typed show below it, those not already tokens: Up and Down move among
 // them, and Enter or a click adds one. Changed reports a change; name it
 // with Label. Query binds what is being typed, for suggestions the app
-// looks up as the user types.
+// looks up and matches itself as the user types.
 //
 //	ui.TokenField(c, &app.tags, allTags).Label("Tags")
 func coreTokenField(c *context, tokens *[]string, suggestions []string) *node {
@@ -577,12 +577,18 @@ func coreTokenField(c *context, tokens *[]string, suggestions []string) *node {
 	})
 	f.Wrap()
 	p.anchor = f
-	// What Query finds the field and its text by.
-	coreLocal(f, tokenQueryKey{}, func() tokenQuery { return tokenQuery{} }).text = query
+	// What Query finds the field and its text by. The last build's Query
+	// says whether the app matches the suggestions itself.
+	tq := coreLocal(f, tokenQueryKey{}, func() tokenQuery { return tokenQuery{} })
+	tq.text, tq.bound, tq.binding = query, tq.binding, false
 
 	var shown []string
 	if q := strings.TrimSpace(*query); q != "" && p.Filtering() {
-		for _, s := range matching(suggestions, q) {
+		options := suggestions
+		if !tq.bound {
+			options = matching(suggestions, q)
+		}
+		for _, s := range options {
 			if !slices.Contains(*tokens, s) {
 				shown = append(shown, s)
 			}
@@ -617,10 +623,13 @@ type tokenQueryKey struct{}
 
 // tokenQuery is the text being typed in a TokenField: text is where the
 // field keeps it, and published what Query last wrote to the app's
-// string, which tells a write of the app's from the field's own.
+// string, which tells a write of the app's from the field's own. binding
+// tells that Query was called since the field was last built, and bound
+// that it was before this build: the app matches the suggestions itself.
 type tokenQuery struct {
-	text      *string
-	published string
+	text           *string
+	published      string
+	bound, binding bool
 }
 
 // Query binds *q to the text being typed in a TokenField's input, for an
@@ -629,13 +638,15 @@ type tokenQuery struct {
 // after its constructor took what was typed; what an input method is
 // composing comes as it is committed, as in a text input's value. Adding
 // a token clears it. Changed, asked after Query, also reports a change of
-// the text, for the app to look up after a pause in typing; it passes what
-// it found as the suggestions of a later build, which shows those
-// containing the text, as it does any. Writing *q sets the input's text,
-// as setting a text input's value does, without a change to report. With
-// Query, assistive technology sees a combo box whose suggestions complete
-// what was typed, even while there are none to show. Elements other than
-// a TokenField ignore it.
+// the text, for the app to look up after a pause in typing, and the app
+// passes what it found as the suggestions of a later build. The app
+// matches them itself: the field shows them as given, in their order,
+// leaving out only those already tokens, rather than those containing
+// the text, so that a lookup folding accents finds Émile for "emile".
+// Writing *q sets the input's text, as setting a text input's value does,
+// without a change to report. With Query, assistive technology sees a
+// combo box whose suggestions complete what was typed, even while there
+// are none to show. Elements other than a TokenField ignore it.
 //
 //	to := ui.TokenField(c, &app.to, app.found).Label("To").Query(&app.query)
 //	if to.Changed() {
@@ -650,6 +661,12 @@ func (e *node) Query(q *string) *node {
 		return e
 	}
 	e.c.rt.applyInputs()
+	tq.binding = true
+	if !tq.bound {
+		// This build matched the suggestions with the text: build again
+		// to show them as the app gives them.
+		e.c.rt.consumed = true
+	}
 	in := e.focusTo
 	// Suggestions come as the user types: the input is a combo box while
 	// there are none yet, rather than a text field turning into one as

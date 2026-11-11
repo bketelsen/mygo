@@ -3891,7 +3891,9 @@ either.
   input, copies it to the app's string and keeps what it copied
   (`tokenQuery.published`), so that a string the app changed since is
   the app's, which the input takes as a text input takes a value the app
-  sets.
+  sets. While the build before called `Query` (`tokenQuery.bound`), the
+  app matches the suggestions, which the field shows as given rather than
+  `matching` the text; the pass that first binds it builds again.
 - **Disclosures** (`ui/collapsible.go`). A collapsible's trigger is a
   `RoleDisclosure`, expanded while open: AppKit's `AXDisclosureTriangle`,
   whose value is 1 while open; a toggle button that is expandable, and

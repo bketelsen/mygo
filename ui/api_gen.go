@@ -3005,7 +3005,7 @@ func ToggleGroup(c *Context, fn func()) Element {
 // typed show below it, those not already tokens: Up and Down move among
 // them, and Enter or a click adds one. Changed reports a change; name it
 // with Label. Query binds what is being typed, for suggestions the app
-// looks up as the user types.
+// looks up and matches itself as the user types.
 //
 //	ui.TokenField(c, &app.tags, allTags).Label("Tags")
 func TokenField(c *Context, tokens *[]string, suggestions []string) Element {
@@ -7150,13 +7150,15 @@ func (_handle Element) Pretty() Element {
 // after its constructor took what was typed; what an input method is
 // composing comes as it is committed, as in a text input's value. Adding
 // a token clears it. Changed, asked after Query, also reports a change of
-// the text, for the app to look up after a pause in typing; it passes what
-// it found as the suggestions of a later build, which shows those
-// containing the text, as it does any. Writing *q sets the input's text,
-// as setting a text input's value does, without a change to report. With
-// Query, assistive technology sees a combo box whose suggestions complete
-// what was typed, even while there are none to show. Elements other than
-// a TokenField ignore it.
+// the text, for the app to look up after a pause in typing, and the app
+// passes what it found as the suggestions of a later build. The app
+// matches them itself: the field shows them as given, in their order,
+// leaving out only those already tokens, rather than those containing
+// the text, so that a lookup folding accents finds Émile for "emile".
+// Writing *q sets the input's text, as setting a text input's value does,
+// without a change to report. With Query, assistive technology sees a
+// combo box whose suggestions complete what was typed, even while there
+// are none to show. Elements other than a TokenField ignore it.
 //
 //	to := ui.TokenField(c, &app.to, app.found).Label("To").Query(&app.query)
 //	if to.Changed() {
