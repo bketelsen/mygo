@@ -639,3 +639,23 @@ of matches. The editor's menu, its find and go to line bars and their
 names are in the window's language
 ([MyGo's own strings](../i18n.md#mygos-own-strings)). Input methods compose in the editor as in other text fields,
 with their candidate window at the caret.
+
+### Per-line text styles
+
+`State.SetLineStyles` gives individual lines a font and line height, for
+headings in a live preview. Zero font fields inherit the editor's. `Strike`
+rules through text while leaving replacement elements alone. `LineStyles`
+returns a copy of the styles after edits move them with their lines.
+
+```go
+app.code.SetLineStyles([]editor.LineStyle{
+    {Line: 0, Font: ui.Font{Size: 28, Weight: 700}},
+    {Line: 4, Strike: true},
+})
+```
+
+Styled lines wrap with their own font metrics. Carets, selections, pointer
+hits, replacement elements and blocks use those row heights. Gutter numbers
+keep the editor's font on the first row's baseline. Setting the same styles
+again keeps the layouts; changing a style invalidates that line alone.
+Diff views take no line styles.

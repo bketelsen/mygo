@@ -601,7 +601,7 @@ func (ed *editor) foldPlaceholderAt(x float32, y float64) (int, bool) {
 	last := &l.rows[len(l.rows)-1]
 	end := last.indent + last.width
 	g := v.heights.geometry(line)
-	rowTop := g.rows + float64(len(l.rows)-1)*float64(v.lineHeight)
+	rowTop := g.rows + float64(len(l.rows)-1)*float64(l.rowHeight)
 	if y >= rowTop && x >= end+4 && x <= end+4+v.charWidth*3+8 {
 		return line, true
 	}
