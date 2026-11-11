@@ -416,3 +416,16 @@ go test ./ui/markdown -run 'TestCommonMark|TestGFM|TestAppend|TestEdits|TestPath
 ```
 
 <!-- repository-only:end -->
+
+### Task actions and custom anchors
+
+`Options.OnTask(line, checked)` makes task checkboxes interactive. `line` is the
+one-based line in the supplied Markdown, and `checked` is the requested state.
+The caller owns source edits; omitted callbacks leave checkboxes read-only.
+For generated or embedded Markdown, map this line to the original document
+before writing. `CodeBlockView.SourceLine()` returns the opening fence line,
+so a custom renderer can map actions in nested Markdown.
+
+`Options.AnchorBlock(document, name)` can resolve non-heading anchors to a
+parser block index; return -1 to fall back to heading slugs. It applies to
+both `Anchor` and internal fragment links. Use `AnchorVersion` to repeat a jump.

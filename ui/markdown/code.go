@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/internal/l10n"
@@ -256,4 +257,10 @@ func (st *viewState) highlight(cs *codeState, i int) {
 		ch.n = last - first
 		ch.ok = true
 	}
+}
+
+// SourceLine is the 1-based source line of the opening fence. Its first
+// content line follows it, for applications mapping nested rendered content.
+func (b *CodeBlockView) SourceLine() int {
+	return strings.Count(b.st.doc.Source()[:b.st.doc.Block(b.Index).Start], "\n") + 1
 }
