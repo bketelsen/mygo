@@ -4136,7 +4136,10 @@ either.
     `fixParagraphStyleAttributeInRange:`, but for the app's `ID`, which
     follows the text and never comes from what is inserted. Lists are
     flat, an indent per item, as Quill and Automerge keep them, which
-    leaves room for a CRDT.
+    leaves room for a CRDT. `QuoteDepth` keeps quotation nesting separately
+    from list indentation; the existing `Quote` flag with zero depth means
+    one level. Splitting and joining paragraphs, undo, JSON, HTML and
+    Markdown preserve the two dimensions independently.
   - *The document* (`document.go`, `commands.go`). A `Document` holds a
     text, the selection, the typing attributes, and the steps of undo as
     the texts before and after each, which share all they did not change,

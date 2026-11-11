@@ -495,7 +495,7 @@ func (v *view) insets(st ParagraphStyle) (left, right float32) {
 		left += look.indent
 	}
 	if st.Quote {
-		left += look.indent * 0.75
+		left += look.indent * 0.75 * float32(st.quoteDepth())
 	}
 	if st.CodeBlock {
 		left += look.size * look.CodeBlockPadding[0]
@@ -523,7 +523,7 @@ func (v *view) firstLine(p int, st ParagraphStyle) float32 {
 	}
 	prev := v.para(p - 1)
 	ps := prev.style
-	if prev.n == 0 || !body(ps) || ps.Align != ui.Start || ps.Quote != st.Quote || ps.Indent != st.Indent {
+	if prev.n == 0 || !body(ps) || ps.Align != ui.Start || ps.quoteDepth() != st.quoteDepth() || ps.Indent != st.Indent {
 		return 0
 	}
 	return v.look.size * v.look.FirstLineIndent

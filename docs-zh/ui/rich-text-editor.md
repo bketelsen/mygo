@@ -31,6 +31,8 @@ if richtext.Editor(c, app.doc).Fill().Changed() {
 
 `Text` 是带属性的文本，由多个段落组成：每段有自己的 `ParagraphStyle`，段内的每个文本段有自己的 `Attributes`。它和字符串一样是值类型。它的方法返回新文本，原文本保持不变，新旧文本共享所有未改动的内容。保留一个版本（用于撤销、稍后保存或比较）只需一个指针；即使其他 goroutine 正在创建新版本，也可从任意 goroutine 读取已有版本。
 
+`ParagraphStyle.QuoteDepth` 将嵌套引用的深度与列表项的 `Indent` 层级分开保存。`Quote: true` 且深度为零时仍表示一层引用。段落拆分、合并、撤销以及 JSON、HTML 和 Markdown 转换都会保留该深度，包括嵌套引用中的列表。
+
 ```go
 note := richtext.TextOf(
 	richtext.Paragraph{Style: richtext.ParagraphStyle{Heading: 1}, Runs: []richtext.Run{{Text: "Groceries"}}},

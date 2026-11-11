@@ -44,6 +44,11 @@ was, sharing with it all they did not change. Keeping a version, to undo,
 to save later or to compare, costs a pointer, and a version can be read
 from any goroutine while others are made.
 
+`ParagraphStyle.QuoteDepth` keeps nested quotations separate from `Indent`,
+the level of a list item. `Quote: true` with zero depth still means one
+quotation. The depth follows paragraph splits and joins and survives undo,
+JSON, HTML and Markdown, including lists inside nested quotations.
+
 ```go
 note := richtext.TextOf(
 	richtext.Paragraph{Style: richtext.ParagraphStyle{Heading: 1}, Runs: []richtext.Run{{Text: "Groceries"}}},

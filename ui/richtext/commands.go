@@ -267,7 +267,12 @@ func (d *Document) ToggleQuote() {
 	d.lock()
 	defer d.mu.Unlock()
 	off := d.paragraphsAll(func(p ParagraphStyle) bool { return p.Quote })
-	d.formatParagraphs(func(p *ParagraphStyle) { p.Quote = !off })
+	d.formatParagraphs(func(p *ParagraphStyle) {
+		if off || !p.Quote {
+			p.QuoteDepth = 0
+		}
+		p.Quote = !off
+	})
 }
 
 func (d *Document) ToggleCodeBlock() {
