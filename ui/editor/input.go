@@ -267,6 +267,9 @@ func (ed *editor) textAt(x, y float32) int {
 		return -1
 	}
 	cx, cy := ed.toContent(x, y)
+	if b, _, ok := ed.blockAt(cy); ok && b.kind == blockApp {
+		return -1
+	}
 	off := ed.offsetAt(cx, cy)
 	if cr, ok := ed.caretRect(off); !ok || float64(cy) > float64(cr.Y+cr.H) ||
 		off == ed.view.text.LineEnd(ed.view.text.LineOf(off)) && cx > cr.X+ed.view.charWidth/2 {
@@ -410,8 +413,13 @@ func (ed *editor) pointerMove(ev ui.InputEvent) bool {
 	// before them, but their rendered text is still a hover target. Not a
 	// link's, which would underline the line's last word.
 	if off < 0 && ed.regionAt(ev.X, ev.Y) == regionText {
-		if cx, cy := ed.toContent(ev.X, ev.Y); ed.overTrailingInlay(cx, float64(cy)) {
+		cx, cy := ed.toContent(ev.X, ev.Y)
+		if ed.overTrailingInlay(cx, float64(cy)) {
 			off = ed.offsetAt(cx, cy)
+		}
+		// An app's block is over no text either.
+		if b, _, ok := ed.blockAt(cy); ok && b.kind == blockApp {
+			off = -1
 		}
 	}
 	if off < 0 {
