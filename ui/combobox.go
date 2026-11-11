@@ -505,7 +505,8 @@ func magnifier(c *context) *node {
 // it while empty takes out the last. The suggestions containing what was
 // typed show below it, those not already tokens: Up and Down move among
 // them, and Enter or a click adds one. Changed reports a change; name it
-// with Label.
+// with Label. Query binds what is being typed, for suggestions the app
+// looks up as the user types.
 //
 //	ui.TokenField(c, &app.tags, allTags).Label("Tags")
 func coreTokenField(c *context, tokens *[]string, suggestions []string) *node {
@@ -576,6 +577,8 @@ func coreTokenField(c *context, tokens *[]string, suggestions []string) *node {
 	})
 	f.Wrap()
 	p.anchor = f
+	// What Query finds the field and its text by.
+	coreLocal(f, tokenQueryKey{}, func() tokenQuery { return tokenQuery{} }).text = query
 
 	var shown []string
 	if q := strings.TrimSpace(*query); q != "" && p.Filtering() {
@@ -607,4 +610,66 @@ func coreTokenField(c *context, tokens *[]string, suggestions []string) *node {
 		}
 	})
 	return f
+}
+
+// tokenQueryKey is the local of a TokenField that Query finds it by.
+type tokenQueryKey struct{}
+
+// tokenQuery is the text being typed in a TokenField: text is where the
+// field keeps it, and published what Query last wrote to the app's
+// string, which tells a write of the app's from the field's own.
+type tokenQuery struct {
+	text      *string
+	published string
+}
+
+// Query binds *q to the text being typed in a TokenField's input, for an
+// app that looks up suggestions as the user types, as a mail's recipients
+// in an address book. The field writes the text to *q as Query is called,
+// after its constructor took what was typed; what an input method is
+// composing comes as it is committed, as in a text input's value. Adding
+// a token clears it. Changed, asked after Query, also reports a change of
+// the text, for the app to look up after a pause in typing; it passes what
+// it found as the suggestions of a later build, which shows those
+// containing the text, as it does any. Writing *q sets the input's text,
+// as setting a text input's value does, without a change to report. With
+// Query, assistive technology sees a combo box whose suggestions complete
+// what was typed, even while there are none to show. Elements other than
+// a TokenField ignore it.
+//
+//	to := ui.TokenField(c, &app.to, app.found).Label("To").Query(&app.query)
+//	if to.Changed() {
+//		app.typedAt = c.Now() // look up once typing pauses
+//	}
+func (e *node) Query(q *string) *node {
+	if q == nil || !e.hasState() || e.focusTo == nil {
+		return e
+	}
+	tq, ok := e.st.locals[tokenQueryKey{}].(*tokenQuery)
+	if !ok {
+		return e
+	}
+	e.c.rt.applyInputs()
+	in := e.focusTo
+	// Suggestions come as the user types: the input is a combo box while
+	// there are none yet, rather than a text field turning into one as
+	// they come and go.
+	in.role, in.autoComplete = RoleComboBox, AutoCompleteList
+	switch {
+	case *q != tq.published:
+		// The app wrote *q: the input shows it, as a text input shows a
+		// value the app sets, and the suggestions match it as the view
+		// builds again.
+		*tq.text = *q
+		if ed := in.st.editor; ed != nil && ed.buf.s != *q {
+			ed.setText(*q)
+			ed.compose = ""
+		}
+		e.c.rt.consumed = true
+	case *q != *tq.text:
+		*q = *tq.text
+		e.st.markChanged()
+	}
+	tq.published = *q
+	return e
 }
