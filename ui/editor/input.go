@@ -370,6 +370,10 @@ func (ed *editor) pointerMove(ev ui.InputEvent) bool {
 			off == ed.view.text.LineEnd(ed.view.text.LineOf(off)) && cx > cr.X+ed.view.charWidth/2 {
 			off = -1
 		}
+		// An app's block is over no text either.
+		if b, _, ok := ed.blockAt(cy); ok && b.kind == blockApp {
+			off = -1
+		}
 	}
 	if off < 0 {
 		// Off the text, nothing rests.

@@ -120,9 +120,12 @@ func (a *app) editorPage(c *ui.Context, f *file) {
 	}
 	st.SetDiagnostics(st.Buffer.Version(), todos(st.Buffer))
 	if a.preview && isMarkdown(f) {
-		st.SetReplacements(livePreview(st))
+		rs, blocks := livePreview(st)
+		st.SetReplacements(rs)
+		st.SetBlocks(blocks)
 	} else {
 		st.SetReplacements(nil)
+		st.SetBlocks(nil)
 	}
 	editor.View(c, st).Grow(1).FillWidth().AutoFocus()
 	// The status bar.

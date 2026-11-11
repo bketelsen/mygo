@@ -4009,6 +4009,15 @@ either.
     through their newline join the hidden spans. Replacements move as
     selections do, and a change lays out again only the lines of those
     that differ, so that an app can set them every frame.
+  - *Blocks* (`blocks.go`). An app's elements between lines are the
+    display model's blocks (`blockApp`), the rows a diff has, sticky on
+    the lines a replacement hides so that they stand in for them. Their
+    elements are built over the text, without a height: a paint reads
+    the box layout gave each (`measureBlocks`), before placing the lines
+    around it, and a block moved by that builds again. Those not built
+    keep the last height measured, or `Height`, and the scroll's anchor
+    leaves what shows in place as they turn out otherwise. A block
+    standing in for lines is one stop for carets (`standIn`).
   - *Highlighting* (`syntax.go`). A `Highlighter` follows the buffer's
     edits and gives tokens per line; the default tokenizes lines from the
     state the line above ended in (`lexer.go`, `lexers.go`), keeping the
