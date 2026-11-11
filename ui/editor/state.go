@@ -503,6 +503,32 @@ func (st *State) SetReplacements(rs []Replacement) {
 // moved them.
 func (st *State) Replacements() []Replacement { return slices.Clone(st.ed.view.repls) }
 
+// SetBlocks shows elements between the lines of the text, as an image
+// under the line naming it: each as high as its element is laid out, and
+// only those in view built. They move with the edits until set again, a
+// block going with its line's text, and staying where a line deleted was.
+// Set them again as the text changes: those at the place of one shown
+// keep their elements and heights, so this is cheap in every frame.
+// Blocks of lines that don't exist are left out.
+//
+// A block on a line a replacement hides shows in place of the lines the
+// replacement covers, as a table drawn in place of its source; a fold
+// hides the blocks of its lines.
+func (st *State) SetBlocks(blocks []Block) {
+	st.ensure()
+	st.ed.setBlocks(blocks)
+}
+
+// Blocks returns the blocks shown, where the edits since moved them.
+func (st *State) Blocks() []Block {
+	st.ensure()
+	out := make([]Block, len(st.ed.view.blocks))
+	for i := range out {
+		out[i] = st.ed.view.blocks[i].Block
+	}
+	return out
+}
+
 // SetSuggestion shows text at offset, muted, as an edit prediction:
 // Tab inserts it, and an edit or a move of the caret drops it. An empty
 // text takes it away.

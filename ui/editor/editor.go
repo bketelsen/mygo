@@ -221,12 +221,14 @@ type editor struct {
 	gitDiff  *gitDiff
 	brackets bracketCache
 
-	// placed are the elements of replacements the last build placed, at
-	// the scroll of placedScroll, which a frame painting them elsewhere
-	// builds again (replacementsMoved); placeScratch is where they are
-	// found anew.
+	// placed are the elements of replacements and blocks the last build
+	// placed, at the scroll of placedScroll, which a frame painting them
+	// elsewhere builds again (replacementsMoved); placeScratch is where
+	// they are found anew.
 	placed, placeScratch []placed
 	placedScroll         [2]float64
+	// built are the elements of blocks the last build made.
+	built []builtBlock
 }
 
 // lastClip is what an editor last copied, which pasting its text in any
@@ -424,6 +426,7 @@ func (ed *editor) resetForBuffer() {
 	ed.view.inlays, ed.suggestion = nil, ""
 	ed.view.repls = nil
 	ed.view.replsChanged()
+	ed.view.blocks, ed.view.blocksStale = nil, true
 	ed.complete.close()
 	ed.hover.close()
 	ed.find.scope, ed.find.stale, ed.find.lowerVer, ed.find.lower = nil, true, 0, ""
@@ -508,6 +511,10 @@ func (ed *editor) caretRect(off int) (ui.Rect, bool) {
 	v := &ed.view
 	line := v.text.LineOf(off)
 	if v.heights.isHidden(line) {
+		if r, ok := ed.standIn(line); ok && off == r.Start {
+			top, _ := ed.standInBox(r)
+			return ui.Rect{Y: float32(top), W: 2, H: v.lineHeight}, true
+		}
 		return ui.Rect{}, false
 	}
 	l := v.line(line)
@@ -528,6 +535,9 @@ func (ed *editor) offsetAt(x float32, y float64) int {
 	line := v.heights.lineAt(y)
 	g := v.heights.geometry(line)
 	if g.hidden {
+		if r, ok := ed.standIn(line); ok {
+			return r.Start
+		}
 		return v.text.LineEnd(line)
 	}
 	l := v.line(line)
@@ -552,6 +562,15 @@ func (ed *editor) offsetAt(x float32, y float64) int {
 func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {
 	v := &ed.view
 	line := v.text.LineOf(off)
+	// From a block standing in for lines, as from the last of them going
+	// down, and the first going up.
+	if r, ok := ed.standIn(line); ok {
+		line = v.text.LineOf(r.Start)
+		if rows > 0 {
+			line = v.text.LineOf(r.End) - 1
+		}
+		off = v.text.LineStart(line)
+	}
 	l := v.line(line)
 	d := l.toDisp(off-l.start, true)
 	ri := l.rowOf(d, false)
@@ -566,6 +585,14 @@ func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {
 			} else {
 				next := line + 1
 				for next < n && v.heights.isHidden(next) {
+					if r, ok := ed.standIn(next); ok {
+						// A block standing in for lines is a row to move by.
+						if rows--; rows == 0 {
+							return r.Start, goal
+						}
+						next = v.text.LineOf(r.End)
+						continue
+					}
 					next++
 				}
 				if next >= n {
@@ -580,6 +607,13 @@ func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {
 			} else {
 				prev := line - 1
 				for prev >= 0 && v.heights.isHidden(prev) {
+					if r, ok := ed.standIn(prev); ok {
+						if rows++; rows == 0 {
+							return r.Start, goal
+						}
+						prev = v.text.LineOf(r.Start) - 1
+						continue
+					}
 					prev--
 				}
 				if prev < 0 {
