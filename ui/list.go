@@ -74,8 +74,10 @@ type ListState struct {
 	// choice follows its item as rows come and go, and becomes -1 when the
 	// item is no longer among the rows: the list writes that as it builds,
 	// so what the app builds after the list in the same pass reads -1. An
-	// app that shows another set of rows in the same list can start it
-	// afresh (list = ListState{}), which forgets the item chosen before.
+	// app that chooses another item at the row the choice had, as rows
+	// change, chooses it with Choose. An app that shows another set of rows
+	// in the same list can start it afresh (list = ListState{}), which
+	// forgets the item chosen before.
 	Selected *int
 	// Selection, when set, lets the user choose several rows, which it
 	// holds by their keys: a click chooses one, Cmd-click (Ctrl-click on
@@ -344,6 +346,22 @@ func (s *ListState) ScrollToEnd() {
 	s.scrolled = true
 }
 
+// Choose chooses row, as setting *Selected does, -1 for none, and tells
+// the list that the app chose it: with a Key, the list otherwise takes
+// *Selected left at the row it chose last for its item staying chosen,
+// and moves the choice with that item as rows come above it. Choose the
+// row of another item that lands there, as a new file sorted above the
+// one chosen, then chosen, and the choice stays with the new item. Call
+// it from the view, or as the rows change. It does nothing without
+// Selected.
+func (s *ListState) Choose(row int) {
+	if s.Selected == nil {
+		return
+	}
+	*s.Selected = row
+	s.selKey = nil
+}
+
 // HoldPlace keeps the list where it is in the next layout rather than
 // following its end, as a row opening a fold in the last message of a
 // chat does, for the line clicked to stay under the pointer. FollowEnd
@@ -514,7 +532,8 @@ func buildList(c *context, e, owner *node, s *ListState, n int, row func(i int),
 	flat, tree := kind == tableList || kind == treeTableList, kind == treeList || kind == treeTableList
 	rt := c.rt
 	f := &s.frame
-	if f.e != nil && f.frame == rt.frame && f.pass == rt.pass {
+	// Another window's numbers can match: a list moved to it is no second List.
+	if f.e != nil && f.c.rt == rt && f.frame == rt.frame && f.pass == rt.pass {
 		panic("ui: a ListState shown by two Lists")
 	}
 	if rt.listMenu == nil {
@@ -1651,7 +1670,7 @@ func (e *node) layoutList(w, h float32) {
 		// Above the rows scrolling under it, and still at the top when the
 		// offset moves before placing.
 		journalKeep(rt, &pinned.flags)
-		pinned.flags |= flagAbsolute
+		pinned.markAbsolute()
 		e.forgetIntrinsic()
 	}
 	e.contentW, e.contentH = float64(cw+e.padX()), content

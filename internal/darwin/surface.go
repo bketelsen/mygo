@@ -395,15 +395,17 @@ func (s *surface) RequestFrame() {
 		s.frameSoon()
 		return
 	}
-	if s.link != 0 {
+	// The link does not tick for a window hidden or minimized, only for
+	// one covered: its frames come from the timer below, as without a
+	// link, or the one the view builds as the window hides (WindowHidden)
+	// would wait until it shows again. Package ui holds the others
+	// (holdFrame), which draw nothing, but only once the window server
+	// told that the window left the screen (occlusionState), which takes
+	// a pass of the run loop: drawn at once each (drawSoon), the frames of
+	// a view that asks for one in each would keep the backend's queue from
+	// ever emptying, and the main thread in it.
+	if s.link != 0 && sendBool(s.w.win, "isVisible") {
 		switch {
-		case !sendBool(s.w.win, "isVisible"):
-			// The link does not tick for a window hidden or minimized,
-			// only for one covered: the frame draws at once, as the one
-			// the view builds as the window hides (WindowHidden) would
-			// otherwise wait until it shows again. Package ui holds the
-			// others (holdFrame), which draw nothing.
-			s.drawSoon()
 		case s.linkRunning:
 			s.due = true
 		case time.Since(s.lastFrame) > 2*s.refresh() && (s.visible() || !s.drawn):
@@ -495,6 +497,14 @@ func (s *surface) drawSoon() {
 		// A frame drawn since the last ask, as a resize's, drew what
 		// this one would.
 		if s.w.b.surfaceOf(s.view) != s || s.lastFrame != s.soonAfter {
+			return
+		}
+		if s.link != 0 && s.resized && s.presentsWithTransaction() {
+			// A frame for a new size after one presented with the
+			// transaction, drawn in a pass of its own, does not show
+			// (updateLayer): the link's next tick draws it.
+			s.lastFrame = time.Now()
+			s.RequestFrame()
 			return
 		}
 		s.frameNow(false)

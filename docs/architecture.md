@@ -3027,7 +3027,8 @@ either.
   offsets move in the layout too
   (`ui/scroll.go`): elements that asked to `ScrollIntoView`, and the focus
   as the keyboard or the app moved it (`node.focus`; a click does not,
-  nor the app while a pointer button is held),
+  nor the app while a pointer button is held or with
+  `FocusOptions.PreventScroll`),
   come into view before the boxes are placed, lined up as its options say
   (or glide there as a wheel's notches do, by what they went each frame,
   `glideScroll`), and placing keeps each offset within its content; a
@@ -3169,8 +3170,9 @@ either.
   window hidden, minimized or covered by other windows, whose display link
   still ticks while it is covered, at the display's rate for half a
   minute, then at about 40 Hz, but not while it is hidden or minimized,
-  where `RequestFrame` draws the frame from the backend's queue
-  (`drawSoon`) instead; a minimized window on Linux, as GDK's `window-state-event` tells
+  where a timer draws the frames `RequestFrame` asks for instead, a
+  refresh after the last, and the backend's queue (`drawSoon`) the one
+  after a pause; a minimized window on Linux, as GDK's `window-state-event` tells
   on X11, and on Windows, as `WM_SIZE` does, where no `WM_PAINT` comes
   and `RequestFrame` draws the frame from the queue as well), what moves asks for no frame, and a frame asked for by a change of
   the state waits (`holdFrame`; both `held`), as browsers draw nothing for
@@ -3975,10 +3977,22 @@ either.
     highlighter and the diff follow a buffer by the versions they last
     saw (`sync`): selections, folds, diagnostics and caches move through
     the changes since, with a bias at insertions, so that one buffer is
-    shown by several editors and both sides of a diff. Undo keeps the
-    texts before and after each step, grouped while typing of one kind
-    by one editor goes on within 300 ms, and each step the selections of
-    the editor that made it.
+    shown by several editors and both sides of a diff. A step of undo
+    keeps the edits that take it back, a list for each version it made,
+    grouped while typing of one kind by one editor goes on within 300 ms,
+    and the selections of the editor that made it. Taking a step back
+    applies its lists from the last, logging a version for each, whose
+    text is its changes' as tree-sitter needs, and keeps the edits taking
+    each back as the step of redo. `EditRemote` makes a version outside
+    the history and moves both stacks past it, from the top
+    (`rebase`): the edit's ranges (`span`) and a step's lists are of one
+    text, so each moves past the other (`rebaseEdits`), and the ranges go
+    on down. A step that overlaps them leaves the history, the text
+    staying as it is, so the steps under it move past that step and the
+    ranges together (`composeSpans`). The cost is a few integers for
+    each edit of the history, whatever the size of the text; a step's
+    replaced text is a string, so undoing `Set` builds the text again
+    where it used to swap versions.
   - *Display* (`display.go`, `view.go`). Every line is a row, several
     when it wraps, none when folded or collapsed by a diff; blocks are
     rows between lines (a diff's deleted lines, spacers, separators,
@@ -5272,7 +5286,9 @@ either.
     that took back the drawables given back when idle: drawn in AppKit's
     display of the view, presented with the transaction too, it did not
     show, and the window kept the last frame stretched to its new size
-    (#1044). The main thread never
+    (#1044). So does one asked for after a pause, which would otherwise
+    draw from the backend's queue (`drawSoon`) in a pass of its own, and
+    not show either. The main thread never
     waits for the display: after each frame presented as soon as drawn, a
     goroutine on a thread of its own (`present.go`) takes the next frame's
     drawable, which `nextDrawable` holds back while the display holds the
@@ -5302,7 +5318,11 @@ either.
     Waiting for a drawable remains separate from waiting for an instance
     buffer, so offscreen encode timings do not establish presentation latency.
     Opaque fill cores use an unblended pipeline in BGRA8; float16 keeps
-    blending to preserve its interpolation rounding. Fragment functions are
+    blending to preserve its interpolation rounding, and GPUs outside the
+    Mac2 family keep to the blended one: one such GPU, an Intel Haswell
+    whose driver OpenCore Legacy Patcher backported, hung in the unblended
+    pipeline (#1566), and blending them costs only that GPU's tile-based
+    win of writing without blending. Fragment functions are
     specialized by batch class and continuous corners, with general shaders
     as an identical fallback. Runs of small batches of different classes
     (each covering at most 128×128 pixels, as a box's shadow then its
@@ -5312,7 +5332,12 @@ either.
     cached per device, outside the frame path. Renderer release stops and
     joins that worker before releasing its shader library. Float16 shadows
     stay general, and fills with fractional opacity avoid the plain class,
-    because specialization otherwise changes rounding. Function constant
+    because specialization otherwise changes rounding. GPUs outside
+    Metal's Mac2 family (`supportsFamily:`), as Intel's Haswell, draw every
+    batch with the general pipeline, compiling and warming none, and keep
+    their batches together: one such GPU, on a driver backported by
+    OpenCore Legacy Patcher, hung while specialized pipelines compiled
+    (#1566). Function constant
     indices 0 through 7 belong to the renderer; effects start their own at 8.
     Two seconds after the last frame, as the
     driver frees its own memory of frames, a timer shrinks the drawables,
