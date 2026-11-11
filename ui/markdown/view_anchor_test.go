@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown/parser"
 )
 
 func TestViewAnchorInitialAndRepeated(t *testing.T) {
@@ -68,5 +69,28 @@ func TestViewOnLinkSetsAnchor(t *testing.T) {
 	}
 	if len(tt.OpenedURLs()) != 0 {
 		t.Fatalf("links escaped to the system opener: %q", tt.OpenedURLs())
+	}
+}
+
+func TestCustomAnchorResolvesAParagraph(t *testing.T) {
+	var scroll ui.ScrollState
+	source := strings.Repeat("Before.\n\n", 30) + "Destination.\n"
+	o := Options{Anchor: "^target", AnchorBlock: func(d *parser.Document, name string) int {
+		if name != "^target" {
+			return -1
+		}
+		for i := 1; i < d.Len(); i++ {
+			if strings.Contains(d.Lines(i), "Destination") {
+				return i
+			}
+		}
+		return -1
+	}}
+	ui.NewTester(func(c *ui.Context) {
+		c.DisableAnimations()
+		ui.Scroll(c).Fill().TrackScroll(&scroll).Children(func() { View(c, source, &o) })
+	}, 400, 160)
+	if scroll.Y <= 0 {
+		t.Fatal("custom paragraph anchor did not scroll")
 	}
 }
