@@ -456,6 +456,41 @@ as many as it needs.
 The [code editor example](../../examples/code-editor) has a live preview
 of its README.md.
 
+## Line styles
+
+`SetLineStyles` draws lines in other fonts, as a Markdown editor's headings
+in larger type. The text stays the buffer's; only how its lines look
+changes.
+
+```go
+var styles []editor.LineStyle
+for _, h := range headings(buf) { // the app's parser
+	styles = append(styles, editor.LineStyle{
+		Line: h.Line, Font: ui.Font{Size: 28 - 3*float32(h.Level), Weight: 700},
+	})
+}
+app.code.SetLineStyles(styles)
+```
+
+- **`Font`**'s zero fields take the editor's, so `Size` alone keeps its
+  family. **`LineHeight`** is a multiple of the font's size, as
+  `State.LineHeight`; 0 takes the editor's.
+- **Rows** of a styled line are as high as its font makes them, and it
+  wraps in its own font. Carets, selections, presses, find's matches and a
+  replacement's element follow; an element without a `Width` is as wide as
+  the line's rows are high.
+- **The gutter** numbers styled lines in the editor's font, on the baseline
+  of their first row.
+- **Only the lines in view** are laid out still: the height of a styled
+  line's rows comes from its font's metrics, without shaping it, and how
+  many rows a wrapped one takes is measured as for any line.
+
+Styles move with edits, a style going with its line's text, and set again,
+the same styles cost nothing and a change lays out only the lines whose
+style changed. `LineStyles` returns them as the edits moved them. A diff's
+sides take none. The [code editor example](../../examples/code-editor)'s
+live preview shows its README.md's headings this way.
+
 ## Code snippets
 
 A completion's `Insert` is always plain text, even with

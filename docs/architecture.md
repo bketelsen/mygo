@@ -4023,6 +4023,16 @@ either.
     through their newline join the hidden spans. Replacements move as
     selections do, and a change lays out again only the lines of those
     that differ, so that an app can set them every frame.
+  - *Line styles* (`line_styles.go`). A styled line is laid out by a view
+    of its own style (`styledView`), one per font and line height, which
+    shares the editor's text, highlighter, inlays and replacements and
+    keeps its own widths, shaped rows and layouts; the layouts carry
+    their rows' height and metrics (`lineLayout.rowHeight`), which every
+    place painting or hit-testing a row uses. The heights keep the
+    styled lines' row heights (`heights.styles`), each adding the
+    difference from the editor's to the entries blocks add to, so that
+    `top` and `lineAt` are unchanged, a line's height known from its
+    font's metrics without laying it out.
   - *Highlighting* (`syntax.go`). A `Highlighter` follows the buffer's
     edits and gives tokens per line; the default tokenizes lines from the
     state the line above ended in (`lexer.go`, `lexers.go`), keeping the

@@ -444,6 +444,7 @@ func (ed *editor) setSuggestion(off int, text string) {
 		sortInlays(ed.view.inlays)
 	}
 	ed.view.lines.m = nil
+	ed.view.invalidateStyledLines()
 }
 
 func sortInlays(in []inlay) {
@@ -462,4 +463,5 @@ func (ed *editor) setInlays(hints []Inlay) {
 	}
 	sortInlays(ed.view.inlays)
 	ed.view.lines.m = nil
+	ed.view.invalidateStyledLines()
 }

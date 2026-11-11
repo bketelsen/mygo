@@ -503,6 +503,33 @@ func (st *State) SetReplacements(rs []Replacement) {
 // moved them.
 func (st *State) Replacements() []Replacement { return slices.Clone(st.ed.view.repls) }
 
+// SetLineStyles draws lines in other fonts, as a Markdown editor's
+// headings in larger type: each line's rows are as high as its style
+// makes them, and only the lines in view are laid out still. They move
+// with the edits until set again, a style going with its line's text.
+// Set them again as the text changes: setting the same styles costs
+// nothing, and a change lays out again only the lines whose style
+// changed. Styles of lines that don't exist are left out, and the last
+// given for a line wins. A diff's sides take none.
+//
+// The gutter numbers styled lines in the editor's font, on the baseline
+// of their first row, and a replacement's element without a Width is as
+// wide as the line's rows are high.
+func (st *State) SetLineStyles(styles []LineStyle) {
+	st.ensure()
+	st.ed.setLineStyles(styles)
+}
+
+// LineStyles returns the styles shown, where the edits since moved them.
+func (st *State) LineStyles() []LineStyle {
+	st.ensure()
+	out := make([]LineStyle, len(st.ed.view.lineStyles))
+	for i, s := range st.ed.view.lineStyles {
+		out[i] = s.LineStyle
+	}
+	return out
+}
+
 // SetSuggestion shows text at offset, muted, as an edit prediction:
 // Tab inserts it, and an edit or a move of the caret drops it. An empty
 // text takes it away.
