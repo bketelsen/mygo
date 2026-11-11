@@ -272,7 +272,9 @@ func (h *heights) update() {
 			h.entries = append(h.entries, heightEntry{s.line, (s.extra - h.lh) * float32(h.wraps.rows(s.line))})
 		}
 	}
-	slices.SortFunc(h.entries, func(a, b heightEntry) int { return a.line - b.line })
+	if len(h.styles) > 0 {
+		slices.SortFunc(h.entries, func(a, b heightEntry) int { return a.line - b.line })
+	}
 	h.prefix = slices.Grow(h.prefix[:0], len(h.entries)+1)[:len(h.entries)+1]
 	h.prefix[0] = 0
 	for i, e := range h.entries {

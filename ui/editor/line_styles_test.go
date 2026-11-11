@@ -118,3 +118,28 @@ func TestFoldedStyledLineTakesNoHeight(t *testing.T) {
 		t.Fatalf("folded height %v, want %v", got, want)
 	}
 }
+
+// A styled line keeps its syntax colors, and a block under it goes below
+// its taller rows.
+func TestLineStylesTokensAndBlocks(t *testing.T) {
+	ct := newEditorTest(t, "go", "package a\n// a comment\nvar x = 1\n")
+	ct.st.SetLineStyles([]LineStyle{{Line: 1, Font: ui.Font{Size: 26}}})
+	ct.st.SetBlocks([]Block{tall(1, false, 40, "Under")})
+	ct.settle()
+	ed := &ct.st.ed
+	l := ed.view.line(1)
+	if len(l.toks) == 0 {
+		t.Fatal("the styled line has no tokens")
+	}
+	under, ok := ct.tt.Find("Under")
+	if !ok {
+		t.Fatal("the block isn't built")
+	}
+	g := ed.view.heights.geometry(1)
+	if want := ed.r.Y + float32(g.rows+float64(len(l.rows))*float64(l.rowHeight)); under.Y != want {
+		t.Fatalf("the block is at %v, want %v under the styled line", under.Y, want)
+	}
+	if got, want := ed.rowTop(2), g.rows+float64(l.rowHeight)+40; got != want {
+		t.Fatalf("the line after is at %v, want %v", got, want)
+	}
+}

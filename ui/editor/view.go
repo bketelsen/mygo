@@ -573,6 +573,10 @@ func (v *view) line(n int) *lineLayout {
 		child := v.styledView(s.LineStyle)
 		l := child.line(n)
 		l.strike = s.Strike
+		if child.approx {
+			// Its tokens are a guess: frames go on until they are known.
+			v.approx, child.approx = true, false
+		}
 		v.heights.wraps.set(n, len(l.rows))
 		v.maxLine = max(v.maxLine, l.width)
 		return l

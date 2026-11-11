@@ -125,9 +125,11 @@ func (v *view) styledView(s LineStyle) *view {
 		child = &view{}
 		v.styleViews[key] = child
 	}
-	if child.version != v.version || child.buf != v.buf {
+	if child.version != v.version || child.buf != v.buf || child.hl != v.hl {
 		child.lines.m = nil
 	}
+	// The buffer's highlighter colors its lines, as the editor's own.
+	child.hl = v.hl
 	child.buf, child.text, child.version = v.buf, v.text, v.version
 	child.repls, child.inlays = v.repls, v.inlays
 	child.setStyle(f, height, v.scale, v.tabSize)
