@@ -53,9 +53,13 @@ type view struct {
 	// next are kept in. replHidden are the lines they hide, while
 	// replHiddenOK, and contents counts those that build elements.
 	repls, replScratch []Replacement
-	replHidden         []lineSpan
-	replHiddenOK       bool
-	contents           int
+	// replCross tells, by replacement, whether it may cross lines: true
+	// until replacedLines looks, and again once a change reaches inside
+	// it, so that an edit looks up the lines of those alone.
+	replCross, crossScratch []bool
+	replHidden              []lineSpan
+	replHiddenOK            bool
+	contents                int
 	// blocks are the app's elements between lines, sorted by where they
 	// go (State.SetBlocks), and blockScratch the slice the next are kept
 	// in; nextBlock is the last id given. rows are what they take in the
