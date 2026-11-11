@@ -4117,7 +4117,16 @@ either.
   HTML of that Markdown parsed again, which `ui/richtext` pastes with its
   formatting, as it reads Markdown with the same parser
   (`ParseMarkdown`). Links open in the system only when `ui.SafeToOpen`
-  allows them, in both.
+  allows them, in both. Tasks' check boxes are boxes of `RoleCheckBox`,
+  read-only, or, with `Options.OnTask`, focusable and named by the plain
+  text of their item's first paragraph, kept by block while its start,
+  end and revision stay, so that a steady frame makes no name. The line
+  a click reports, and `CodeBlockView.SourceLine`, count the source's
+  line endings (`\n`, `\r\n` and `\r`, as the parser reads them) up to
+  the block's start when asked, rather than keeping a table of lines that
+  every edit would shift. `Options.AnchorBlock` resolves an anchor before
+  the headings' slugs; the view scrolls to a list item by its row, and to
+  a table's row or cell by the table, the elements it builds.
 - **Rich text** (`ui/richtext`). Package `richtext` edits attributed text
   on ui's public API, as `ui/editor` does: a focusable box with a text
   input client, `HandleInput`, `Draw`, `Access` and its own scrolling, and
