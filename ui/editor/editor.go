@@ -425,6 +425,7 @@ func (ed *editor) resetForBuffer() {
 	ed.folds, ed.autoclosed, ed.marked, ed.diags = nil, nil, nil, nil
 	ed.view.inlays, ed.suggestion = nil, ""
 	ed.view.repls, ed.view.replCross = nil, nil
+	ed.view.lineStyles, ed.view.stylesDirty = nil, true
 	ed.view.replsChanged()
 	ed.view.blocks, ed.view.blocksStale = nil, true
 	ed.complete.close()
@@ -582,8 +583,8 @@ func (ed *editor) overTrailingInlay(x float32, y float64) bool {
 			if from >= to {
 				continue
 			}
-			top := ed.rowTop(line) + float64(rowIndex)*float64(v.lineHeight)
-			if y < top || y >= top+float64(v.lineHeight) {
+			top := ed.rowTop(line) + float64(rowIndex)*float64(l.rowHeight)
+			if y < top || y >= top+float64(l.rowHeight) {
 				continue
 			}
 			left, right := v.xOf(l, row, from), v.xOf(l, row, to)

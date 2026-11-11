@@ -143,3 +143,16 @@ func TestLineStylesTokensAndBlocks(t *testing.T) {
 		t.Fatalf("the line after is at %v, want %v", got, want)
 	}
 }
+
+// Another buffer takes none of the styles of the last.
+func TestLineStylesNewBuffer(t *testing.T) {
+	ct := newEditorTest(t, "", "one\ntwo")
+	ct.st.SetLineStyles([]LineStyle{{Line: 1, Font: ui.Font{Size: 30}}})
+	ct.settle()
+	ct.st.Buffer = NewBuffer("a\nb\nc")
+	ct.settle()
+	v := &ct.st.ed.view
+	if len(ct.st.LineStyles()) != 0 || v.rowHeight(1) != v.lineHeight {
+		t.Fatal("the styles outlived their buffer")
+	}
+}
