@@ -58,7 +58,8 @@ type heights struct {
 	lh      float32
 	n       int // lines
 	hidden  []lineSpan
-	blocks  []block // sorted by line, above before below
+	blocks  []block       // sorted by line, above before below
+	styles  []heightEntry // line-specific row heights
 	entries []heightEntry
 	prefix  []float64 // prefix[i] is the extra of entries[:i]
 	// hiddenRows[i] is how many rows the hidden spans before i hide.
@@ -247,7 +248,7 @@ func (h *heights) isHidden(line int) bool {
 // update makes the entries again after the hidden lines or the blocks
 // changed, and the first time, as the zero heights has made none.
 func (h *heights) update() {
-	if h.wraps.on && len(h.hidden) > 0 && h.wrapsSeen != h.wraps.version {
+	if h.wraps.on && (len(h.hidden) > 0 || len(h.styles) > 0) && h.wrapsSeen != h.wraps.version {
 		h.dirty = true
 	}
 	if !h.dirty && h.prefix != nil {
@@ -266,6 +267,12 @@ func (h *heights) update() {
 		}
 		h.entries = append(h.entries, heightEntry{b.line, b.height})
 	}
+	for _, s := range h.styles {
+		if s.line < h.n && !h.isHidden(s.line) {
+			h.entries = append(h.entries, heightEntry{s.line, (s.extra - h.lh) * float32(h.wraps.rows(s.line))})
+		}
+	}
+	slices.SortFunc(h.entries, func(a, b heightEntry) int { return a.line - b.line })
 	h.prefix = slices.Grow(h.prefix[:0], len(h.entries)+1)[:len(h.entries)+1]
 	h.prefix[0] = 0
 	for i, e := range h.entries {
@@ -390,7 +397,7 @@ func (h *heights) geometry(line int) lineGeometry {
 	g.hidden = h.isHidden(line)
 	g.below = g.rows
 	if !g.hidden {
-		g.below += float64(h.lh) * float64(h.wraps.rows(line))
+		g.below += float64(h.rowHeight(line)) * float64(h.wraps.rows(line))
 	}
 	g.bottom = g.below
 	for _, b := range below {
