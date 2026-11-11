@@ -79,7 +79,13 @@ func (ed *editor) setReplacements(rs []Replacement) {
 		out = append(out, r)
 	}
 	clear(in[len(out):])
-	old := v.repls
+	old, oldCross := v.repls, v.replCross
+	// A range the last ones held holds the same bytes, and crosses lines
+	// or not as it did.
+	cross := slices.Grow(v.crossScratch[:0], len(out))[:len(out)]
+	for k := range cross {
+		cross[k] = true
+	}
 	// The lines of the replacements that are not in both, or not alike.
 	for i, j := 0, 0; i < len(old) || j < len(out); {
 		switch {
@@ -94,6 +100,9 @@ func (ed *editor) setReplacements(rs []Replacement) {
 				v.forgetLines(old[i].Start, old[i].End)
 				v.forgetLines(out[j].Start, out[j].End)
 			}
+			if old[i].End == out[j].End {
+				cross[j] = oldCross[i]
+			}
 			i++
 			j++
 		}
@@ -101,6 +110,7 @@ func (ed *editor) setReplacements(rs []Replacement) {
 	// The slice given last is the scratch of the next, its functions let go.
 	clear(old)
 	v.repls, v.replScratch = out, old[:0]
+	v.replCross, v.crossScratch = cross, oldCross[:0]
 	v.replsChanged()
 }
 
@@ -146,14 +156,21 @@ func (v *view) moveRepls(cs []change) {
 		return
 	}
 	out := v.repls[:0]
-	for _, r := range v.repls {
+	c := 0
+	for i, r := range v.repls {
+		// Only a change reaching inside it changes the bytes it holds.
+		for c < len(cs) && cs[c].oldEnd <= r.Start {
+			c++
+		}
+		touched := c < len(cs) && cs[c].oldStart < r.End
 		r.Start, r.End = mapOffset(r.Start, cs, biasRight), mapOffset(r.End, cs, biasLeft)
 		if r.End > r.Start {
+			v.replCross[len(out)] = v.replCross[i] || touched
 			out = append(out, r)
 		}
 	}
 	clear(v.repls[len(out):])
-	v.repls = out
+	v.repls, v.replCross = out, v.replCross[:len(out)]
 	v.replsChanged()
 }
 
@@ -180,9 +197,14 @@ func (v *view) replacedLines() []lineSpan {
 	v.replHidden = v.replHidden[:0]
 	t := &v.text
 	for i := range v.repls {
+		// Most stay within a line, known without looking in the text.
+		if !v.replCross[i] {
+			continue
+		}
 		r := &v.repls[i]
 		a, b := t.LineOf(r.Start), t.LineOf(r.End)
 		if b == a {
+			v.replCross[i] = false
 			continue
 		}
 		first := a

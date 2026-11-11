@@ -424,7 +424,7 @@ func (ed *editor) resetForBuffer() {
 	ed.selUndo, ed.selRedo = nil, nil
 	ed.folds, ed.autoclosed, ed.marked, ed.diags = nil, nil, nil, nil
 	ed.view.inlays, ed.suggestion = nil, ""
-	ed.view.repls = nil
+	ed.view.repls, ed.view.replCross = nil, nil
 	ed.view.replsChanged()
 	ed.view.blocks, ed.view.blocksStale = nil, true
 	ed.complete.close()
