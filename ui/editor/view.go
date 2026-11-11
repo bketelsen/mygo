@@ -53,9 +53,13 @@ type view struct {
 	// next are kept in. replHidden are the lines they hide, while
 	// replHiddenOK, and contents counts those that build elements.
 	repls, replScratch []Replacement
-	replHidden         []lineSpan
-	replHiddenOK       bool
-	contents           int
+	// replCross tells, by replacement, whether it may cross lines: true
+	// until replacedLines looks, and again once a change reaches inside
+	// it, so that an edit looks up the lines of those alone.
+	replCross, crossScratch []bool
+	replHidden              []lineSpan
+	replHiddenOK            bool
+	contents                int
 
 	lines   lineCache
 	shaped  shapeCache

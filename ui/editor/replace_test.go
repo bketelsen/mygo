@@ -2,6 +2,7 @@ package editor
 
 import (
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 
@@ -644,5 +645,123 @@ func TestReplacementsNewBuffer(t *testing.T) {
 	}
 	if got := ct.st.ed.view.line(0).disp; got != "other" {
 		t.Fatalf("displayed %q", got)
+	}
+}
+
+// crossing counts the replacements whose lines an edit would look up.
+func crossing(v *view) int {
+	n := 0
+	for _, c := range v.replCross {
+		if c {
+			n++
+		}
+	}
+	return n
+}
+
+// An edit looks up the lines of the replacements it reached inside, not
+// of all of them, and setting them again where they are looks up none.
+func TestReplacementsLookUpOnlyThoseEdited(t *testing.T) {
+	var b strings.Builder
+	var rs []Replacement
+	for range 500 {
+		rs = append(rs, hide(b.Len()+1, b.Len()+3))
+		b.WriteString("a**b\n")
+	}
+	ct := newEditorTest(t, "", b.String())
+	ct.st.SetReplacements(rs)
+	v := &ct.st.ed.view
+	if got := crossing(v); got != len(rs) {
+		t.Fatalf("%d replacements to look up at first", got)
+	}
+	v.replacedLines()
+	if got := crossing(v); got != 0 {
+		t.Fatalf("%d replacements left to look up", got)
+	}
+	// Before them all, and at the edges of one: none reached inside.
+	ct.st.Buffer.Edit(Edit{Start: 0, End: 0, Text: "x"})
+	ct.st.ed.sync()
+	if got := crossing(v); got != 0 {
+		t.Fatalf("an edit before them has %d to look up", got)
+	}
+	r := v.repls[10]
+	ct.st.Buffer.Edit(Edit{Start: r.End, End: r.End, Text: "y"})
+	ct.st.ed.sync()
+	if got := crossing(v); got != 0 {
+		t.Fatalf("an edit at an end has %d to look up", got)
+	}
+	r = v.repls[10]
+	ct.st.Buffer.Edit(Edit{Start: r.Start + 1, End: r.Start + 1, Text: "z"})
+	ct.st.ed.sync()
+	if got := crossing(v); got != 1 {
+		t.Fatalf("an edit inside one has %d to look up", got)
+	}
+	v.replacedLines()
+	ct.st.SetReplacements(ct.st.Replacements())
+	if got := crossing(v); got != 0 {
+		t.Fatalf("set again where they are, %d to look up", got)
+	}
+}
+
+// The lines hidden stay what the text says, as edits add and take away
+// newlines inside and around replacements.
+func TestReplacementsHiddenFollowEdits(t *testing.T) {
+	rng := rand.New(rand.NewPCG(1651, 3))
+	want := func(v *view) []lineSpan {
+		var out []lineSpan
+		for i := range v.repls {
+			r := &v.repls[i]
+			a, b := v.text.LineOf(r.Start), v.text.LineOf(r.End)
+			first := a
+			if r.Start > v.text.LineStart(a) || r.shown() != "" {
+				first++
+			}
+			if b == a || first > b-1 {
+				continue
+			}
+			if k := len(out); k > 0 && first <= out[k-1].to+1 {
+				out[k-1].to = max(out[k-1].to, b-1)
+				continue
+			}
+			out = append(out, lineSpan{first, b - 1})
+		}
+		return out
+	}
+	for range 100 {
+		var b strings.Builder
+		for range 5 + rng.IntN(30) {
+			b.WriteString([]string{"a", "bb", "\n", "\n"}[rng.IntN(4)])
+		}
+		src := b.String()
+		ct := newEditorTest(t, "", src)
+		var rs []Replacement
+		for range 1 + rng.IntN(6) {
+			start := rng.IntN(len(src))
+			r := hide(start, min(len(src), start+1+rng.IntN(6)))
+			if rng.IntN(3) == 0 {
+				r.Text = "…"
+			}
+			rs = append(rs, r)
+		}
+		ct.st.SetReplacements(rs)
+		v := &ct.st.ed.view
+		v.replacedLines()
+		for range 30 {
+			n := ct.st.Buffer.Len()
+			start := rng.IntN(n + 1)
+			end := min(n, start+rng.IntN(4))
+			ct.st.Buffer.Edit(Edit{Start: start, End: end, Text: []string{"", "c", "\n", "d\ne"}[rng.IntN(4)]})
+			ct.st.ed.sync()
+			if len(v.replCross) != len(v.repls) {
+				t.Fatalf("%d flags for %d replacements", len(v.replCross), len(v.repls))
+			}
+			got, exp := v.replacedLines(), want(v)
+			if !slices.Equal(got, exp) && (len(got) != 0 || len(exp) != 0) {
+				t.Fatalf("%q with %+v hides %v, want %v", ct.st.Buffer.String(), v.repls, got, exp)
+			}
+			if rng.IntN(4) == 0 {
+				ct.st.SetReplacements(ct.st.Replacements())
+			}
+		}
 	}
 }
