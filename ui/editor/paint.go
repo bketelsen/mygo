@@ -58,6 +58,7 @@ func (ed *editor) layout(w, h, scale float32) {
 		// Wrapped lines fit: nothing is sideways.
 		ed.scrollX = 0
 	}
+	v.refreshLineHeights()
 	v.heights.setLines(v.text.LineCount())
 	var blocks []block
 	if ds, ok := ed.o.decor.(*diffSide); ok {
@@ -377,7 +378,7 @@ func (ed *editor) paintLine(p *ui.Painter, r ui.Rect, f *frame, line int, g line
 	v := &ed.view
 	ct := ed.theme
 	l := v.line(line)
-	lh := v.lineHeight
+	lh := l.rowHeight
 	ox := r.X + ed.textX - ed.scrollX
 	textRect := ui.Rect{X: r.X + ed.gutterW, W: r.W - ed.gutterW}
 	var style lineLook
@@ -584,7 +585,7 @@ func (ed *editor) fillRange(p *ui.Painter, f *frame, l *lineLayout, row *rowLayo
 	}
 	f.rects = mergeRects(ed.view.rangeRects(l, row, a, b, f.rects[:0]))
 	for _, rc := range f.rects {
-		p.Fill(ui.Rect{X: ox + rc.X, Y: y, W: rc.W, H: ed.view.lineHeight}, c, radius)
+		p.Fill(ui.Rect{X: ox + rc.X, Y: y, W: rc.W, H: l.rowHeight}, c, radius)
 	}
 }
 
@@ -607,7 +608,7 @@ func (ed *editor) paintMarked(p *ui.Painter, f *frame, l *lineLayout, row *rowLa
 func (ed *editor) ruleRange(p *ui.Painter, f *frame, l *lineLayout, row *rowLayout, ox, y float32, a, b int, c ui.Color) {
 	f.rects = mergeRects(ed.view.rangeRects(l, row, a, b, f.rects[:0]))
 	for _, rc := range f.rects {
-		p.Fill(ui.Rect{X: ox + rc.X, Y: y + ed.view.lineHeight - 2, W: rc.W, H: 1}, c, 0)
+		p.Fill(ui.Rect{X: ox + rc.X, Y: y + l.rowHeight - 2, W: rc.W, H: 1}, c, 0)
 	}
 }
 
@@ -617,7 +618,7 @@ func (ed *editor) paintGuides(p *ui.Painter, f *frame, line int, ox, y float32, 
 	ct := ed.theme
 	tab := ed.tabSize()
 	in := ed.lineIndent(line)
-	h := v.lineHeight * float32(rows)
+	h := v.rowHeight(line) * float32(rows)
 	for level := 0; level*tab < in; level++ {
 		x := float32(math.Round(float64(ox + float32(level*tab)*v.charWidth)))
 		c := ct.IndentGuide
@@ -686,7 +687,7 @@ func (ed *editor) paintWhitespace(p *ui.Painter, f *frame, l *lineLayout, row *r
 		}
 		x0 := ox + v.xOf(l, row, d)
 		x1 := ox + v.xOf(l, row, l.toDisp(i+1, false))
-		cy := y + v.lineHeight/2
+		cy := y + l.rowHeight/2
 		if c == ' ' {
 			dot := float32(2)
 			p.Fill(ui.Rect{X: (x0+x1)/2 - dot/2, Y: cy - dot/2, W: dot, H: dot}, ct.Whitespace, dot/2)
@@ -775,7 +776,8 @@ func (ed *editor) paintGutter(p *ui.Painter, r ui.Rect, f *frame) {
 					if style.number.A > 0 {
 						col = style.number
 					}
-					v.paintRow(p, &lineLayout{disp: s}, &row, numRight-lay.Width, y, &cc, func(int, ui.Color) ui.Color { return col })
+					metrics := v.line(line)
+					v.paintRow(p, &lineLayout{disp: s, rowHeight: metrics.rowHeight, ascent: metrics.ascent, descent: metrics.descent}, &row, numRight-lay.Width, y, &cc, func(int, ui.Color) ui.Color { return col })
 				}
 			}
 			for _, m := range ed.o.gutterMarks {

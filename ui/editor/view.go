@@ -27,18 +27,21 @@ type view struct {
 	hlGen    int         // counts the highlighters the view had
 	readOnly bool
 
-	font       ui.Font
-	style      text.Style
-	lineHeight float32
-	ascent     float32
-	descent    float32
-	charWidth  float32 // the advance of "0", for columns
-	textGen    uint64  // the text system's generation the widths are of
-	tabSize    int
-	wrap       bool
-	wrapWidth  float32
-	scale      float32
-	theme      *Theme
+	lineStyles  []appLineStyle
+	styleViews  map[lineStyleKey]*view
+	stylesDirty bool
+	font        ui.Font
+	style       text.Style
+	lineHeight  float32
+	ascent      float32
+	descent     float32
+	charWidth   float32 // the advance of "0", for columns
+	textGen     uint64  // the text system's generation the widths are of
+	tabSize     int
+	wrap        bool
+	wrapWidth   float32
+	scale       float32
+	theme       *Theme
 	// faces are the faces of the kinds of tokens, by the theme; styled
 	// tells whether any is not the regular one.
 	faces  [tokenKinds]uint8
@@ -109,11 +112,14 @@ const inlayTrailing = 3
 
 // lineLayout is a line laid out for display.
 type lineLayout struct {
-	n     int
-	start int    // the byte of the text it starts at
-	text  string // the line, without its newline
-	disp  string // as displayed: tabs expanded, inlays inserted
-	segs  []dispSeg
+	owner                      *view
+	rowHeight, ascent, descent float32
+	strike                     bool
+	n                          int
+	start                      int    // the byte of the text it starts at
+	text                       string // the line, without its newline
+	disp                       string // as displayed: tabs expanded, inlays inserted
+	segs                       []dispSeg
 	// reps are the replacements meeting the line as it was laid out,
 	// which its segments of kind segReplace show (dispSeg.rep).
 	reps  []Replacement
@@ -403,6 +409,7 @@ func (v *view) setStyle(f ui.Font, lineHeight, scale float32, tabSize int) {
 		v.shaped.prev, v.shaped.cur = nil, nil
 	}
 	v.font, v.style, v.lineHeight, v.tabSize, v.scale = f, style, lh, tabSize, scale
+	v.stylesDirty = true
 	v.heights.lh = lh
 	v.heights.dirty = true
 	a, d, _ := text.Shared().Metrics(style)
@@ -413,6 +420,7 @@ func (v *view) setStyle(f ui.Font, lineHeight, scale float32, tabSize int) {
 		v.maxLine = 0
 	}
 	v.lines.m = nil
+	v.stylesDirty = true
 	if v.wrap {
 		v.heights.wraps.reset(v.text.LineCount(), true)
 		v.wrapAt = 0
@@ -447,6 +455,7 @@ func (v *view) setWrap(on bool, width float32) {
 		return
 	}
 	v.wrap, v.wrapWidth = on, width
+	v.stylesDirty = true
 	v.heights.wraps.reset(v.text.LineCount(), on)
 	v.heights.dirty = true
 	v.wrapAt = 0
@@ -499,7 +508,9 @@ func (v *view) sync(moved func(cs []change)) bool {
 		}
 		v.moveRepls(cs)
 		v.moveBlocks(cs)
+		v.moveLineStyles(cs)
 		v.settleBlocks()
+		v.settleLineStyles()
 		if moved != nil {
 			moved(cs)
 		}
@@ -516,11 +527,13 @@ func (v *view) sync(moved func(cs []change)) bool {
 		}
 		v.moveRepls(cs)
 		v.moveBlocks(cs)
+		v.moveLineStyles(cs)
 		if moved != nil {
 			moved(cs)
 		}
 	}
 	v.settleBlocks()
+	v.settleLineStyles()
 	v.heights.setLines(text.LineCount())
 	v.heights.dirty = true
 	return true
@@ -555,6 +568,15 @@ func (v *view) followHighlighter() Highlighter {
 
 // line returns line n laid out.
 func (v *view) line(n int) *lineLayout {
+	if s := v.lineStyle(n); s != nil {
+		child := v.styledView(s.LineStyle)
+		l := child.line(n)
+		l.strike = s.Strike
+		v.heights.wraps.set(n, len(l.rows))
+		v.maxLine = max(v.maxLine, l.width)
+		return l
+	}
+
 	if v.lines.m == nil {
 		v.lines.m = map[int]*lineLayout{}
 	}
@@ -574,7 +596,7 @@ func (v *view) line(n int) *lineLayout {
 		}
 		return l
 	}
-	l := &lineLayout{n: n, used: v.lines.frame}
+	l := &lineLayout{n: n, used: v.lines.frame, owner: v, rowHeight: v.lineHeight, ascent: v.ascent, descent: v.descent}
 	l.start = v.text.LineStart(n)
 	l.text = v.text.Slice(l.start, v.text.LineEnd(n))
 	l.toks, l.exact = v.tokens(n, l.text, nil)
@@ -599,6 +621,9 @@ func (v *view) line(n int) *lineLayout {
 
 // endFrame forgets the lines and layouts no recent frame used.
 func (v *view) endFrame() {
+	for _, child := range v.styleViews {
+		child.endFrame()
+	}
 	v.lines.frame++
 	if len(v.lines.m) > 512 {
 		for k, l := range v.lines.m {
@@ -1017,6 +1042,9 @@ func (v *view) shapeRow(l *lineLayout, row *rowLayout, lazy, fitted bool) {
 
 // piece returns the layout of a row's piece, shaping it the first time.
 func (v *view) piece(l *lineLayout, p *rowPiece) *text.Layout {
+	if l.owner != nil && l.owner != v {
+		return l.owner.piece(l, p)
+	}
 	if p.l == nil {
 		p.l = v.shaped.getSpans(l.disp[p.from:p.to], v.spansOf(l, p.from, p.to), v.style)
 	}
@@ -1248,6 +1276,10 @@ func (v *view) measureWraps(near int, budget time.Duration) bool {
 		if w.extra[i] != wrapUnknown {
 			return true
 		}
+		if v.lineStyle(i) != nil {
+			v.line(i)
+			return true
+		}
 		disp := s
 		var faces []faceRun
 		if strings.IndexByte(s, '\t') >= 0 || len(v.inlaysIn(at, at+len(s))) > 0 || len(v.replsIn(at, at+len(s))) > 0 {
@@ -1456,8 +1488,24 @@ func (cc *runColors) at(d int, def ui.Color) ui.Color {
 // paintRow paints the glyphs of row r of l, its start at x and its top at
 // y, colored by cc, or by override when given.
 func (v *view) paintRow(p *ui.Painter, l *lineLayout, r *rowLayout, x, y float32, cc *runColors, override func(d int, c ui.Color) ui.Color) {
+	if l.strike {
+		for i, sg := range l.segs {
+			if sg.kind == segReplace && l.reps[sg.rep].Content != nil {
+				continue
+			}
+			from, to := max(sg.disp, r.from), min(sg.disp+segLen(l, i), r.to)
+			if to > from {
+				a, b := v.xOf(l, r, from), v.xOf(l, r, to)
+				p.Fill(ui.Rect{X: x + a, Y: y + l.rowHeight/2, W: b - a, H: 1}, v.theme.Text, 0)
+			}
+		}
+	}
 	clip := p.Visible()
-	baseline := y + (v.lineHeight-(v.ascent+v.descent))/2 + v.ascent
+	rowHeight, ascent, descent := l.rowHeight, l.ascent, l.descent
+	if rowHeight <= 0 {
+		rowHeight, ascent, descent = v.lineHeight, v.ascent, v.descent
+	}
+	baseline := y + (rowHeight-(ascent+descent))/2 + ascent
 	def := v.theme.Text
 	for pi := range r.pieces {
 		pc := &r.pieces[pi]
@@ -1516,7 +1564,7 @@ func (v *view) rangeRects(l *lineLayout, r *rowLayout, a, b int, out []ui.Rect) 
 			rb = ra + utf8.RuneCountInString(l.disp[pa:pb])
 		}
 		for _, rc := range lay.SelectionVisual(ra, rb, false) {
-			out = append(out, ui.Rect{X: r.indent + pc.x + rc.X, Y: 0, W: rc.W, H: v.lineHeight})
+			out = append(out, ui.Rect{X: r.indent + pc.x + rc.X, Y: 0, W: rc.W, H: l.rowHeight})
 		}
 	}
 	return out
