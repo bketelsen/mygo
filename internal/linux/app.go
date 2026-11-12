@@ -120,8 +120,11 @@ func (b *Backend) Init(h platform.AppHandler, opts platform.AppOptions) error {
 	// link in /usr/bin of another name (linux.command): GTK names the class
 	// of the windows and the app id after the program, which the desktop
 	// entry names too (StartupWMClass), and WebKitGTK the directories of
-	// the pages' data.
-	if exe, err := os.Executable(); err == nil {
+	// the pages' data. An app that named the program itself before Run
+	// (g_set_prgname), as one does to give its windows the reverse-DNS ID
+	// of its desktop entry, keeps its name: GLib leaves the name unset until
+	// gtk_init_check takes argv[0], so a name here is the app's own.
+	if exe, err := os.Executable(); err == nil && gGetPrgname() == 0 {
 		gSetPrgname(cs(filepath.Base(exe)))
 	}
 	if !gtkInitCheck(0, 0) {

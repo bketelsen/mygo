@@ -377,7 +377,11 @@ by `mygo build` with `mygo_noinspector`) leave out its downloader and
   class of the windows and the app id after the program, as the desktop
   entry does (`StartupWMClass`), and WebKitGTK the directories of the
   pages' data. Started through a link of another name, as `linux.command`
-  puts in `/usr/bin`, the app is then the same program.
+  puts in `/usr/bin`, the app is then the same program. An app that named
+  the program itself before `Run` (`g_set_prgname`), as one does to give
+  its windows the reverse-DNS ID of its desktop entry, keeps its name:
+  GLib leaves the name unset until `gtk_init_check`, so `Init` names the
+  program only while `g_get_prgname` is `NULL`.
 - `Bounds` are those of the frame a reparenting X11 window manager puts
   around the window (`gdk_window_get_frame_extents`): GTK positions the
   frame (NORTH_WEST gravity) and sizes the window inside it, without the
