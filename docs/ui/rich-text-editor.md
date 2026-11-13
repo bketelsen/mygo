@@ -44,6 +44,11 @@ was, sharing with it all they did not change. Keeping a version, to undo,
 to save later or to compare, costs a pointer, and a version can be read
 from any goroutine while others are made.
 
+`ParagraphStyle.QuoteDepth` keeps nested quotations separate from `Indent`,
+the level of a list item. `Quote: true` with zero depth still means one
+quotation. The depth follows paragraph splits and joins and survives undo,
+JSON, HTML and Markdown, including lists inside nested quotations.
+
 ```go
 note := richtext.TextOf(
 	richtext.Paragraph{Style: richtext.ParagraphStyle{Heading: 1}, Runs: []richtext.Run{{Text: "Groceries"}}},
@@ -349,6 +354,60 @@ frame: one that moves it from where it was read, as the user types, the
 editor scrolls or its width changes, builds another, so the popup follows
 the caret. `ok` is false until an editor showed the document, and while the
 caret is scrolled out of view, where the popup hides.
+
+## Scrolling
+
+The editor scrolls itself: with the wheel, its scroll bar, a selection
+dragged to its edges, and to keep the caret in view. `Document.ScrollBy`
+and `Document.ScrollToParagraph` scroll the editor that showed the
+document last, as far as its text goes, and ask for a frame to paint it:
+
+| Method | Does |
+|---|---|
+| `ScrollBy(dy)` | scrolls by `dy` DIPs, down when positive, and reports whether it moved |
+| `ScrollToParagraph(i, align)` | lines paragraph `i` up with the editor's top, middle or bottom (`ui.ScrollStart`, `ui.ScrollCenter`, `ui.ScrollEnd`), or scrolls as little as shows it (`ui.ScrollNearest`), as an element's `ScrollIntoView` does |
+
+An app that drags something of its own over the text, as a block by a
+handle beside it, scrolls the editor while the pointer is near its top or
+bottom edge, as the editor does while the user drags a selection there:
+
+```go
+// y is the pointer's height in the editor's element, h the element's.
+if app.dragging {
+	switch y, h := app.dragY, app.editorH; {
+	case y < 24:
+		app.doc.ScrollBy(y - 24)
+		c.After(16 * time.Millisecond)
+	case y > h-24:
+		app.doc.ScrollBy(y - (h - 24))
+		c.After(16 * time.Millisecond)
+	}
+}
+```
+
+Both lay out what is in view as they scroll, so that `VisibleParagraphs`
+and `CaretRect` read after them give where the paragraphs and the caret
+went, and both do nothing until an editor showed the document.
+
+The editor keeps its place by the first paragraph in view: what grows
+above it, as a paragraph laid out for the first time, moves nothing on
+screen, and what grows below its top moves what is below. While the
+editor has the keyboard focus and is scrolled down its text, it keeps its
+place by the caret's paragraph instead, when that is in view, as browsers
+prefer the focused editable element (CSS Scroll Anchoring's priority
+candidates): what grows between the top of the view and the caret, as the
+room `EditorOptions.Space` leaves or an edit, moves the text above it up,
+and the line being typed stays. An editor scrolled to its top stays there.
+An edit of several replacements keeps the place the same way, following
+them one by one: a paragraph moved from above the view into it in one
+`Document.Edit` leaves the paragraphs in view that did not move where they
+were, and so do undoing and redoing the move. What such an edit puts right
+where the first paragraph in view starts goes above the view, as browsers'
+scroll anchoring keeps the first node in view below what is added before
+it, so undoing a move puts the view back; an edit of one replacement shows
+it at the top of the view, as ever. Undo and redo follow a step's
+replacements up to 16 of them; a longer step, as typing a while, is one
+region, and the view goes where it did before.
 
 ## Typing at the edges of formats
 

@@ -56,3 +56,12 @@ func TestLivePreviewBlocks(t *testing.T) {
 		t.Fatalf("with a caret in the table: %+v, %+v", rs, blocks)
 	}
 }
+
+// Headings show larger by their level, those in code not at all.
+func TestHeadingStyles(t *testing.T) {
+	b := editor.NewBuffer("# Title\ntext\n### Small\n```\n# not a heading\n```\n")
+	got := headingStyles(b)
+	if len(got) != 2 || got[0].Line != 0 || got[1].Line != 2 || got[0].Font.Size <= got[1].Font.Size {
+		t.Fatalf("styles %+v", got)
+	}
+}
