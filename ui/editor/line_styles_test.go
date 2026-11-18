@@ -25,12 +25,12 @@ func (ct *editorTest) styledFrames() {
 // and the lines after it follow, and the style moves with its line.
 func TestLineStylesGeometry(t *testing.T) {
 	ct := newEditorTest(t, "", "one\nheading\nlast")
-	ct.st.SetLineStyles([]LineStyle{{Line: 1, Font: ui.Font{Size: 28}, LineHeight: 1.5}})
+	ct.st.SetLineStyles([]LineStyle{{Line: 1, Font: ui.Font{Size: 28}, LineHeight: 1.5, Strike: true}})
 	ct.styledFrames()
 	ed := &ct.st.ed
 	v := &ed.view
-	if l := v.line(1); l.rowHeight != 42 {
-		t.Fatalf("the styled line's rows are %v high, want 42", l.rowHeight)
+	if l := v.line(1); l.rowHeight != 42 || !l.strike {
+		t.Fatalf("the styled line's metrics and strike are %+v", l)
 	}
 	if got, want := ed.rowTop(2), float64(v.lineHeight)+42; got != want {
 		t.Fatalf("the last line is at %v, want %v", got, want)

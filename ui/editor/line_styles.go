@@ -18,6 +18,8 @@ type LineStyle struct {
 	// LineHeight is the height of the line's rows as a multiple of its
 	// font's size, as State.LineHeight; 0 takes the editor's.
 	LineHeight float32
+	// Strike draws a rule through the text, including wrapped rows.
+	Strike bool
 }
 
 // appLineStyle is a style the app gave, with where its line starts, which

@@ -141,6 +141,7 @@ type lineLayout struct {
 	// line its style's (styledView), whose metrics its rows have.
 	owner                      *view
 	rowHeight, ascent, descent float32
+	strike                     bool
 }
 
 // dispSeg maps a run of the displayed text to the line's: text, a tab
@@ -596,6 +597,7 @@ func (v *view) line(n int) *lineLayout {
 	if s := v.lineStyle(n); s != nil {
 		child := v.styledView(s.LineStyle)
 		l := child.line(n)
+		l.strike = s.Strike
 		if child.approx {
 			// Its tokens are a guess: frames go on until they are known.
 			v.approx, child.approx = true, false
@@ -1574,6 +1576,18 @@ func (cc *runColors) at(d int, def ui.Color) ui.Color {
 // paintRow paints the glyphs of row r of l, its start at x and its top at
 // y, colored by cc, or by override when given.
 func (v *view) paintRow(p *ui.Painter, l *lineLayout, r *rowLayout, x, y float32, cc *runColors, override func(d int, c ui.Color) ui.Color) {
+	if l.strike {
+		for i, sg := range l.segs {
+			if sg.kind == segReplace && l.reps[sg.rep].Content != nil {
+				continue
+			}
+			from, to := max(sg.disp, r.from), min(sg.disp+segLen(l, i), r.to)
+			if to > from {
+				a, b := v.xOf(l, r, from), v.xOf(l, r, to)
+				p.Fill(ui.Rect{X: x + a, Y: y + l.rowHeight/2, W: b - a, H: 1}, v.theme.Text, 0)
+			}
+		}
+	}
 	clip := p.Visible()
 	// A styled line's rows have its style's metrics; rows made to paint
 	// alone, as the gutter's numbers, the view's.
