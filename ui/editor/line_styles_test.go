@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"bytes"
 	"math/rand/v2"
 	"strings"
 	"testing"
@@ -16,6 +17,12 @@ func TestLineStyleStrikesWrappedRows(t *testing.T) {
 	l := ct.st.ed.view.line(0)
 	if len(l.rows) < 2 || !l.strike {
 		t.Fatalf("wrapped line has %d rows and strike %v", len(l.rows), l.strike)
+	}
+	struck := bytes.Clone(ct.tt.Image().Pix)
+	ct.st.SetLineStyles(nil)
+	ct.styledFrames()
+	if bytes.Equal(struck, ct.tt.Image().Pix) {
+		t.Fatal("strike-through did not paint the wrapped line")
 	}
 }
 

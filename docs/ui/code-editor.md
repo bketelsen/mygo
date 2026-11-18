@@ -501,7 +501,8 @@ app.code.SetLineStyles(styles)
 
 - **`Font`**'s zero fields take the editor's, so `Size` alone keeps its
   family. **`LineHeight`** is a multiple of the font's size, as
-  `State.LineHeight`; 0 takes the editor's.
+  `State.LineHeight`; 0 takes the editor's. **`Strike`** draws a rule through
+  every wrapped row without crossing element replacements.
 - **Rows** of a styled line are as high as its font makes them, and it
   wraps in its own font. Carets, selections, presses, find's matches and a
   replacement's element follow; an element without a `Width` is as wide as

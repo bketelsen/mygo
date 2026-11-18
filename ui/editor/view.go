@@ -1577,14 +1577,19 @@ func (cc *runColors) at(d int, def ui.Color) ui.Color {
 // y, colored by cc, or by override when given.
 func (v *view) paintRow(p *ui.Painter, l *lineLayout, r *rowLayout, x, y float32, cc *runColors, override func(d int, c ui.Color) ui.Color) {
 	if l.strike {
-		for i, sg := range l.segs {
-			if sg.kind == segReplace && l.reps[sg.rep].Content != nil {
-				continue
-			}
-			from, to := max(sg.disp, r.from), min(sg.disp+segLen(l, i), r.to)
-			if to > from {
-				a, b := v.xOf(l, r, from), v.xOf(l, r, to)
-				p.Fill(ui.Rect{X: x + a, Y: y + l.rowHeight/2, W: b - a, H: 1}, v.theme.Text, 0)
+		strikeY := y + l.rowHeight/2
+		if len(l.segs) == 0 {
+			p.Fill(ui.Rect{X: x + r.indent, Y: strikeY, W: r.width, H: 1}, v.theme.Text, 0)
+		} else {
+			for i, sg := range l.segs {
+				if sg.kind == segReplace && l.reps[sg.rep].Content != nil {
+					continue
+				}
+				from, to := max(sg.disp, r.from), min(sg.disp+segLen(l, i), r.to)
+				if to > from {
+					a, b := v.xOf(l, r, from), v.xOf(l, r, to)
+					p.Fill(ui.Rect{X: x + a, Y: strikeY, W: b - a, H: 1}, v.theme.Text, 0)
+				}
 			}
 		}
 	}
