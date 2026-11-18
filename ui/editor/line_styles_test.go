@@ -8,6 +8,17 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+func TestLineStyleStrikesWrappedRows(t *testing.T) {
+	ct := newEditorTest(t, "", "done "+strings.Repeat("wrapped ", 40))
+	ct.st.SoftWrap = true
+	ct.st.SetLineStyles([]LineStyle{{Line: 0, Strike: true}})
+	ct.styledFrames()
+	l := ct.st.ed.view.line(0)
+	if len(l.rows) < 2 || !l.strike {
+		t.Fatalf("wrapped line has %d rows and strike %v", len(l.rows), l.strike)
+	}
+}
+
 // styledFrames runs frames until the editor asks for none, as styled
 // lines lay out and the heights follow.
 func (ct *editorTest) styledFrames() {
