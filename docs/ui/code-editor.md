@@ -520,6 +520,12 @@ live preview shows its README.md's headings this way.
 
 ## Blocks between lines
 
+This fork ports the blocks feature from commit
+`c1627b4878676b2438c8315ba4d0aa5d493cc09c` onto upstream v0.10.0
+(`ebde9399baf2734b3361856a53f4036859973d1d`), preserving its line styles
+and replacements. The feature supports Markdown live preview; see
+[egoist/mygo#1651](https://github.com/egoist/mygo/issues/1651).
+
 `SetBlocks` shows elements between the lines of the text, as Zed's blocks:
 an image under the line naming it, or a table in place of its source.
 They are no part of the text, which stays the buffer's.
