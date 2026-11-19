@@ -129,7 +129,8 @@ func TestBlocksStandInCaretGeometryAndShape(t *testing.T) {
 			}
 			want := ui.Rect{X: ed.scrollX - 3, Y: ed.view.lineHeight, W: 2, H: 80}
 			if shape != CursorBar {
-				want.W = ed.view.charWidth
+				want.W = min(ed.view.charWidth, ed.textX-ed.gutterW-1)
+				want.X = ed.scrollX - 1 - want.W
 			}
 			cr, ok := ed.caretRect(r.Start)
 			if !ok || cr != want {
@@ -137,10 +138,10 @@ func TestBlocksStandInCaretGeometryAndShape(t *testing.T) {
 			}
 			offset := ed.view.text.UTF16(r.Start)
 			bounds, _, ok := ed.BoundsForRange(ui.TextInputRange{Start: offset, End: offset})
-			if !ok || bounds != (ui.Rect{X: ed.textX - 3, Y: cr.Y - float32(ed.scrollY), W: 1, H: cr.H}) {
+			if !ok || bounds != (ui.Rect{X: ed.textX - 1 - want.W, Y: cr.Y - float32(ed.scrollY), W: 1, H: cr.H}) {
 				t.Fatalf("IME bounds %+v (%v) disagree with the stand-in cell %+v", bounds, ok, cr)
 			}
-			x, y := ed.r.X+ed.textX-3, ed.r.Y+cr.Y-float32(ed.scrollY)
+			x, y := ed.r.X+ed.textX-1-want.W, ed.r.Y+cr.Y-float32(ed.scrollY)
 			red := func(px, py float32) bool {
 				r, g, _ := ct.pixel(px, py)
 				return r > 200 && g < 230
@@ -179,6 +180,111 @@ func TestBlocksStandInCaretGeometryAndShape(t *testing.T) {
 			} else if shape == CursorBlock && !red(x+want.W/2, y+79.5) {
 				t.Fatal("the unfocused block outline blinked off")
 			}
+		}
+	}
+}
+
+// Opaque content must not hide any part of a stand-in's caret cell.
+// Check the pixels independently of caretRect, including the gutter clip.
+func TestBlocksStandInOpaqueCaret(t *testing.T) {
+	for _, numbers := range []LineNumbers{LineNumbersOn, LineNumbersOff} {
+		for _, tc := range []struct {
+			name    string
+			shape   CursorShape
+			focused bool
+		}{{"bar", CursorBar, true}, {"block", CursorBlock, true}, {"outline", CursorBlock, false}, {"underline", CursorUnderline, true}} {
+			t.Run(tc.name, func(t *testing.T) {
+				ct, rep := standing(t, 80)
+				ct.st.Theme, ct.st.NoActiveLine = redTheme, true
+				ct.st.Font, ct.st.LineNumbers, ct.st.CursorShape = ui.Font{Size: 24}, numbers, tc.shape
+				ct.st.SetBlocks([]Block{{Line: 1, Label: "Opaque", Content: func(c *ui.Context, e ui.Element, b Block) {
+					e.Children(func() { ui.Box(c).FillWidth().Height(80).Background(ui.RGB(0, 0, 0)) })
+				}}})
+				ct.st.Select(rep.Start, rep.Start)
+				ct.tt.SetFocused(tc.focused)
+				ct.settle()
+				ed := &ct.st.ed
+				room, ok := ct.tt.Find("Opaque")
+				if !ok || room.X != ed.r.X+ed.textX || room.H != 80 {
+					t.Fatalf("opaque content is not at the text origin: %+v (%v)", room, ok)
+				}
+				if r, g, b := ct.pixel(room.X+1, room.Y+40); r != 0 || g != 0 || b != 0 {
+					t.Fatalf("the content is not opaque black: %d,%d,%d", r, g, b)
+				}
+				width := float32(2)
+				if tc.shape != CursorBar {
+					width = min(ed.view.charWidth, ed.textX-ed.gutterW-1)
+				}
+				left, right := room.X-1-width, room.X-1
+				red := func(x, y float32) bool {
+					r, g, _ := ct.pixel(x, y)
+					return r > 200 && g < 230
+				}
+				for x := left + 0.5; x < right; x++ {
+					if !red(x, room.Y+79.5) || tc.shape != CursorUnderline && !red(x, room.Y+0.5) {
+						t.Fatalf("numbers %v: the full %v cell is not visible before opaque content at x %v", numbers, tc.shape, x)
+					}
+					if tc.focused && tc.shape != CursorUnderline && !red(x, room.Y+40) {
+						t.Fatal("opaque content hides part of the filled caret")
+					}
+				}
+				gapY := room.Y + 0.5
+				if tc.shape == CursorUnderline {
+					gapY = room.Y + 79.5
+				}
+				if red(room.X-0.5, gapY) || left < ed.r.X+ed.gutterW {
+					t.Fatal("the caret does not fit entirely in the margin before the content")
+				}
+			})
+		}
+	}
+}
+
+// A stand-in's fixed viewport x is not a text-column goal. Adding a
+// caret on either side starts at column 0, regardless of horizontal scroll.
+func TestBlocksStandInAddCursorGoal(t *testing.T) {
+	for _, cmd := range []Command{AddCursorAbove, AddCursorBelow} {
+		for _, scroll := range []float32{37, 83, 0} {
+			ct := newEditorTest(t, "", strings.Repeat("x", 200)+"\ntable\nsource\n"+strings.Repeat("y", 200))
+			r := hide(ct.st.Buffer.Offset(Pos{Line: 1}), ct.st.Buffer.Offset(Pos{Line: 3}))
+			ct.st.SetReplacements([]Replacement{r})
+			ct.st.SetBlocks([]Block{tall(1, false, 80, "Table")})
+			ct.st.Select(r.Start, r.Start)
+			ct.settle()
+			ed := &ct.st.ed
+			ed.scrollX = scroll
+			ct.tt.Frame()
+			if ed.scrollX != scroll {
+				t.Fatal("the source did not keep the requested horizontal scroll")
+			}
+			ct.run(cmd)
+			want := r.End
+			if cmd == AddCursorAbove {
+				want = 0
+			}
+			sels := ct.st.Selections()
+			if len(sels) != 2 || ed.primary().head != want || ed.primary().goal != 0 {
+				t.Fatalf("command %v, scroll %v: selections %+v, primary %+v, want new caret %d with goal 0", cmd, scroll, sels, ed.primary(), want)
+			}
+		}
+	}
+}
+
+// Ordinary carets keep their text column when adding a scrolled caret.
+func TestAddCursorScrolledTextGoal(t *testing.T) {
+	for _, cmd := range []Command{AddCursorAbove, AddCursorBelow} {
+		ct := newEditorTest(t, "", strings.Repeat(strings.Repeat("x", 200)+"\n", 3))
+		ct.st.Select(ct.st.Buffer.Offset(Pos{Line: 1, Col: 7}), ct.st.Buffer.Offset(Pos{Line: 1, Col: 7}))
+		ct.settle()
+		ct.st.ed.scrollX = 83
+		ct.tt.Frame()
+		ct.run(cmd)
+		line := 2
+		if cmd == AddCursorAbove {
+			line = 0
+		}
+		if want := ct.st.Buffer.Offset(Pos{Line: line, Col: 7}); len(ct.st.Selections()) != 2 || ct.st.ed.primary().head != want {
+			t.Fatalf("command %v changed the ordinary text column: %+v, want %d", cmd, ct.st.Selections(), want)
 		}
 	}
 }

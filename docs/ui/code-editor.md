@@ -533,7 +533,9 @@ Carets stop on such a block once, at the start of the range, showing
 before it, and a press on it puts the caret there: an app showing the
 source of what has a caret shows it then. `CursorShape` applies over the
 whole stand-in: a bar or block spans its height, and an underline sits
-at its bottom. Without focus, only the block's outline stays visible.
+at its bottom. The block and underline fit in the margin before the
+content; the bar keeps its insertion point. Without focus, only the
+block's outline stays visible.
 Selecting across it tints it,
 and deleting next to it deletes all of it. A fold hides the blocks of its
 lines.

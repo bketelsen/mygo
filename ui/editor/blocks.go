@@ -254,13 +254,14 @@ func (ed *editor) standInBox(r Replacement) (top, bottom float64) {
 // Blocks stay fixed horizontally, so scrollX cancels the text's offset
 // when consumers place this cell in the viewport. Underlines paint only
 // the bottom of the cell; IME anchors and reveal still use its full height.
+// Keep the whole cell in the margin, with a pixel before opaque content.
 func (ed *editor) standInCaretRect(r Replacement) ui.Rect {
 	top, bottom := ed.standInBox(r)
 	width := float32(2)
 	if ed.o.cursorShape == CursorBlock || ed.o.cursorShape == CursorUnderline {
-		width = ed.view.charWidth
+		width = min(ed.view.charWidth, max(0, ed.textX-ed.gutterW-1))
 	}
-	return ui.Rect{X: ed.scrollX - 3, Y: float32(top), W: width, H: float32(bottom - top)}
+	return ui.Rect{X: ed.scrollX - 1 - width, Y: float32(top), W: width, H: float32(bottom - top)}
 }
 
 // paintStandIns paints what shows of the selections on the blocks
