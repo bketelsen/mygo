@@ -219,23 +219,27 @@ func (h *heights) setHidden(spans []lineSpan) {
 	}
 }
 
+// compareBlockPosition orders lines, then blocks above a line before
+// those below it. Blocks at the same position keep their original order.
+func compareBlockPosition(a, b block) int {
+	if a.line != b.line {
+		return a.line - b.line
+	}
+	if a.below == b.below {
+		return 0
+	}
+	if a.below {
+		return 1
+	}
+	return -1
+}
+
 func (h *heights) setBlocks(blocks []block) {
 	if slices.Equal(h.blocks, blocks) {
 		return
 	}
 	sorted := append(h.scratch[:0], blocks...)
-	slices.SortStableFunc(sorted, func(a, b block) int {
-		if a.line != b.line {
-			return a.line - b.line
-		}
-		if a.below == b.below {
-			return 0
-		}
-		if a.below {
-			return 1
-		}
-		return -1
-	})
+	slices.SortStableFunc(sorted, compareBlockPosition)
 	h.scratch = sorted
 	if !slices.Equal(h.blocks, sorted) {
 		clear(h.blocks)
