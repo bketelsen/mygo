@@ -624,18 +624,89 @@ func TestBlocksScroll(t *testing.T) {
 	}
 	ed.scrollY -= 10
 
-	// A block above the view, taken to be a row, that turns out taller.
-	ct = newEditorTest(t, "", strings.Repeat("x\n", 400))
-	ed = &ct.st.ed
-	ct.st.SetBlocks([]Block{tall(2, false, 300, "High")})
+	// Keep the block partly visible so a real build measures its growth
+	// above a text line that was already on screen, for either placement.
+	for _, above := range []bool{false, true} {
+		t.Run(map[bool]string{false: "below", true: "above"}[above], func(t *testing.T) {
+			ct := newEditorTest(t, "", strings.Repeat("x\n", 400))
+			ed := &ct.st.ed
+			height := float32(80)
+			builds := 0
+			line := 2
+			if above {
+				line++
+			}
+			ct.st.SetBlocks([]Block{{Line: line, Above: above, Label: "High", Content: func(c *ui.Context, e ui.Element, b Block) {
+				builds++
+				e.Children(func() { ui.Box(c).FillWidth().Height(height) })
+			}}})
+			ct.st.LineBackgrounds = []LineBackground{{First: 3, Last: 3, Color: ui.RGB(0, 255, 0)}}
+			ct.settle()
+			ct.st.SetScrollY(ed.rowTop(3) - float64(ed.view.lineHeight)/2)
+			ct.settle()
+			room, ok := ct.tt.Find("High")
+			// Find reports the clipped visible box. Only the bottom of this
+			// already measured block is on screen, at the viewport's top.
+			if !ok || len(ed.built) != 1 || room.Y != ed.r.Y || room.H <= 0 || room.H >= height {
+				t.Fatalf("the block is not built and partly visible above the viewport: %+v (%v)", room, ok)
+			}
+			// Read rendered pixels, not the scroll anchor's own identity equation.
+			screenY := func() int {
+				img := ct.tt.Image()
+				x := img.Bounds().Dx() / 2
+				for y := 0; y < img.Bounds().Dy(); y++ {
+					c := img.RGBAAt(x, y)
+					if c.R == 0 && c.G == 255 && c.B == 0 {
+						return y
+					}
+				}
+				t.Fatal("the marked text line is not visible")
+				return -1
+			}
+			beforeY, beforeScroll := screenY(), ed.scrollY
+			beforeHeight, beforeBuilds := ed.view.blocks[0].height, builds
+			if !ed.view.blocks[0].measured || beforeHeight != height {
+				t.Fatalf("the block's initial height was not measured: %+v", ed.view.blocks[0])
+			}
+			height += 60
+			ct.settle()
+			b := &ed.view.blocks[0]
+			if builds <= beforeBuilds || !b.measured || b.height != height || b.height == beforeHeight {
+				t.Fatalf("the block's height increase was not built and measured: %+v, builds %d to %d", b, beforeBuilds, builds)
+			}
+			if got, want := ed.scrollY, beforeScroll+float64(height-beforeHeight); got != want {
+				t.Errorf("the measured growth scrolled to %v, want %v", got, want)
+			}
+			if afterY := screenY(); afterY != beforeY {
+				t.Errorf("the visible text line moved from screen y %d to %d", beforeY, afterY)
+			}
+		})
+	}
+}
+
+// When the viewport is entirely within a block, keep its internal scroll
+// position rather than anchoring text that is not visible yet.
+func TestBlocksScrollWithinTallBlock(t *testing.T) {
+	ct := newEditorTest(t, "", strings.Repeat("x\n", 400))
+	height := float32(800)
+	ct.st.SetBlocks([]Block{{Line: 0, Content: func(c *ui.Context, e ui.Element, b Block) {
+		e.Children(func() { ui.Box(c).FillWidth().Height(height) })
+	}}})
 	ct.settle()
-	ct.st.ScrollTo(200)
+	ed := &ct.st.ed
+	ct.st.SetScrollY(float64(ed.view.lineHeight) + 20)
 	ct.settle()
-	line := ed.anchorLine
-	ct.st.SetBlocks([]Block{tall(3, false, 300, "Other")})
+	before := ed.scrollY
+	if ed.rowTop(1) <= before+float64(ed.viewH) {
+		t.Fatal("text after the block is unexpectedly visible")
+	}
+	height += 60
 	ct.settle()
-	if ed.anchorLine != line || ed.scrollY != ed.view.heights.top(line)+ed.anchorOff {
-		t.Fatalf("the view left line %d for %d", line, ed.anchorLine)
+	if b := &ed.view.blocks[0]; !b.measured || b.height != height {
+		t.Fatalf("the taller block was not measured: %+v", b)
+	}
+	if ed.scrollY != before {
+		t.Fatalf("scrolling within a tall block moved from %v to %v", before, ed.scrollY)
 	}
 }
 
@@ -699,6 +770,61 @@ func TestBlocksStandInPage(t *testing.T) {
 	}
 }
 
+// A leading hidden range, with or without a stand-in after it, must not
+// trap a backward caret at the first shown line or at that stand-in.
+func TestBlocksStandInWalkHiddenPrefix(t *testing.T) {
+	for _, src := range []string{"a\n", "gone\ntable\nend"} {
+		t.Run(src, func(t *testing.T) {
+			ct := newEditorTest(t, "", src)
+			buf := ct.st.Buffer
+			rs := []Replacement{hide(0, buf.Offset(Pos{Line: 1}))}
+			if buf.LineCount() > 2 {
+				rs = append(rs, hide(buf.Offset(Pos{Line: 1}), buf.Offset(Pos{Line: 2})))
+			}
+			ct.st.SetReplacements(rs)
+			ct.st.SetBlocks([]Block{tall(1, false, 40, "Block")})
+			ct.settle()
+			for _, cmd := range []Command{MoveRight, MoveLeft, MoveDown, MoveUp} {
+				start, end := 0, len(src)
+				if cmd == MoveLeft || cmd == MoveUp {
+					start, end = end, start
+				}
+				ct.st.Select(start, start)
+				for n := 0; ct.st.Cursor() != end; n++ {
+					at := ct.st.Cursor()
+					ct.st.ed.run(cmd)
+					to := ct.st.Cursor()
+					if to == at || (to > at) != (end > start) || n > len(src) {
+						t.Fatalf("%v moved from %d to %d, want endpoint %d", cmd, at, to, end)
+					}
+				}
+			}
+		})
+	}
+}
+
+// Navigation merges replacement spans without changing cached folds.
+// The overlapping folds leave spare capacity in the merged fold slice.
+func TestBlocksStandInNavigationKeepsFoldCache(t *testing.T) {
+	ct := newEditorTest(t, "", "head\nfolded\nhidden\nend")
+	ed := &ct.st.ed
+	r := hide(ct.st.Buffer.Offset(Pos{Line: 2}), ct.st.Buffer.Offset(Pos{Line: 3}))
+	ct.st.SetReplacements([]Replacement{r})
+	ct.st.SetBlocks([]Block{tall(2, false, 40, "Block")})
+	ed.folds = []fold{{0, 1}, {0, 1}}
+	ct.settle()
+	ct.caretTo(ed.view.text.LineEnd(0))
+	ct.run(MoveRight)
+	ct.wantCursor(r.Start)
+	spans := ed.hiddenSpans()
+	if len(spans) != 1 || spans[0] != (lineSpan{1, 1}) {
+		t.Fatalf("navigation changed the cached folds: %+v", spans)
+	}
+	if _, ok := ed.standIn(2); !ok {
+		t.Fatal("navigation folded the stand-in away")
+	}
+}
+
 // Walking the text ends, whatever stands in where, each step moving on.
 func TestBlocksStandInWalkEnds(t *testing.T) {
 	rng := rand.New(rand.NewPCG(1651, 2))
@@ -731,8 +857,10 @@ func TestBlocksStandInWalkEnds(t *testing.T) {
 			cmd Command
 			fwd bool
 		}{{MoveRight, true}, {MoveLeft, false}, {MoveDown, true}, {MoveUp, false}} {
+			want := 0
 			if step.fwd {
 				ct.st.Select(0, 0)
+				want = len(src)
 			} else {
 				ct.st.Select(len(src), len(src))
 			}
@@ -741,6 +869,9 @@ func TestBlocksStandInWalkEnds(t *testing.T) {
 				ed.run(step.cmd)
 				to := ct.st.Cursor()
 				if to == at {
+					if to != want {
+						t.Fatalf("%q with %+v and %+v: %v stopped at %d, want endpoint %d, step %d", src, rs, bs, step.cmd, to, want, n)
+					}
 					break
 				}
 				if (to > at) != step.fwd || n > len(src)+1 {

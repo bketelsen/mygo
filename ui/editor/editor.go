@@ -175,6 +175,9 @@ type editor struct {
 	paintedW   float32
 	anchorLine int
 	anchorOff  float64
+	// anchorRows keeps visible text fixed when a partly visible app block
+	// above it changes height. Otherwise the anchor is the line's top.
+	anchorRows bool
 	reveal     reveal
 	r          ui.Rect // the element's box of the last frame, in the window
 	// laidW is the width the editor was laid out at last, which an editor
@@ -456,6 +459,7 @@ func (ed *editor) resetForBuffer() {
 	ed.gesture.active = false
 	ed.brackets = bracketCache{}
 	ed.scrollY, ed.scrollX, ed.anchorLine, ed.anchorOff = 0, 0, 0, 0
+	ed.anchorRows = false
 	ed.paintedW = 0
 }
 
@@ -710,8 +714,28 @@ func (ed *editor) scrollMax() float64 {
 func (ed *editor) setScroll(y float64) {
 	y = max(0, min(y, ed.scrollMax()))
 	ed.scrollY = y
-	ed.anchorLine = ed.view.heights.lineAt(y)
-	ed.anchorOff = y - ed.view.heights.top(ed.anchorLine)
+	h := &ed.view.heights
+	ed.anchorLine, ed.anchorRows = h.lineAt(y), false
+	// Inside an app block, anchor the text after it when that text is
+	// visible. An offset within the block cannot keep that text fixed
+	// when measurement changes the block's height.
+	if b, _, ok := ed.blockAt(y); ok && b.kind == blockApp {
+		line := ed.anchorLine
+		if b.below || h.isHidden(line) {
+			line++
+		}
+		for line < h.n && h.isHidden(line) {
+			line++
+		}
+		if line < h.n {
+			top := ed.rowTop(line)
+			if top >= y && top < y+float64(ed.viewH) {
+				ed.anchorLine, ed.anchorRows, ed.anchorOff = line, true, y-top
+				return
+			}
+		}
+	}
+	ed.anchorOff = y - h.top(ed.anchorLine)
 }
 
 // restoreScroll puts the scroll back where its line is, as the heights
@@ -719,7 +743,11 @@ func (ed *editor) setScroll(y float64) {
 func (ed *editor) restoreScroll() {
 	h := &ed.view.heights
 	line := min(ed.anchorLine, max(h.n-1, 0))
-	ed.scrollY = max(0, min(h.top(line)+ed.anchorOff, ed.scrollMax()))
+	top := h.top(line)
+	if ed.anchorRows {
+		top = ed.rowTop(line)
+	}
+	ed.scrollY = max(0, min(top+ed.anchorOff, ed.scrollMax()))
 }
 
 // doReveal scrolls the newest caret into view.

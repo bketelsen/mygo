@@ -265,12 +265,15 @@ func TestReplacementsAcrossLines(t *testing.T) {
 	ct.key(0, ui.KeyLeft)
 	ct.wantCursor(1)
 
-	// All the first lines hidden, the caret goes on to the first shown.
+	// A hidden prefix still has a start-of-buffer endpoint. Moving back
+	// reaches it; moving forward again crosses the whole replacement.
 	ct = newEditorTest(t, "", "a\nb\nc")
 	ct.st.SetReplacements([]Replacement{hide(0, 4)})
 	ct.tt.Frame()
 	ct.caretTo(4)
 	ct.key(0, ui.KeyLeft)
+	ct.wantCursor(0)
+	ct.key(0, ui.KeyRight)
 	ct.wantCursor(4)
 }
 

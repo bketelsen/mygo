@@ -514,7 +514,11 @@ func (ed *editor) overFolds(off, to int) int {
 	r := &ed.view.text
 	hidden := ed.hiddenSpans()
 	if rl := ed.view.replacedLines(); len(rl) > 0 {
-		hidden = mergeSpans(append(hidden, rl...))
+		// hiddenSpans is read-only. Merge in the separate scratch buffer,
+		// as hiddenLines does, without adding a diff's collapsed lines.
+		ed.hiddenScratch = append(ed.hiddenScratch[:0], hidden...)
+		hidden = mergeSpans(append(ed.hiddenScratch, rl...))
+		ed.hiddenScratch = hidden
 	}
 	h := heights{hidden: hidden}
 	line := r.LineOf(to)
@@ -541,11 +545,12 @@ func (ed *editor) overFolds(off, to int) int {
 		if rep, ok := ed.standInWithin(ahead, to > off); ok {
 			return rep.Start
 		}
-		// Leaving one with nothing before it but hidden lines stays.
-		if to < off && sp.from == 0 && r.LineOf(off) <= sp.to {
-			return off
+		// A hidden prefix still has a start-of-buffer endpoint. Going
+		// back must not bounce to the first shown line and stop there.
+		if to < off && sp.from == 0 {
+			return 0
 		}
-		if (to > off || sp.from == 0) && sp.to+1 < r.LineCount() {
+		if to > off && sp.to+1 < r.LineCount() {
 			return r.LineStart(sp.to + 1)
 		}
 		return r.LineEnd(max(sp.from-1, 0))
