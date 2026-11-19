@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-18",
+  "scope": "ui/editor",
+  "correction": "Limit the hidden-line result of heights.lineAt to the actual height interval of a sticky blockApp. Sticky deleted and spacer diff blocks must retain the previous collapsed-line lookup, including when they share a line with an app block.",
+  "evidence": "egoist/mygo PR1662 (https://github.com/egoist/mygo/pull/1662), review PRR_kwDOUtDQys8AAAABYzphkQ, point 2; TestReviewDiffNoContextHitTest failed before the fix in unified and split layouts: lineAt returned hidden line 5 instead of fallback line 0, and offsetAt returned 11 instead of 1.",
+  "promoted_to": "ui/editor/diff_review_test.go:TestReviewDiffNoContextHitTest"
+}

@@ -310,6 +310,44 @@ func TestBlocksStandIn(t *testing.T) {
 	}
 }
 
+// Only an app block's own interval maps to its hidden line, not the
+// sticky diff blocks sharing that line, above or below the text.
+func TestBlocksStandInLineAtInterval(t *testing.T) {
+	h := heights{lh: 20}
+	h.setLines(4)
+	h.setHidden([]lineSpan{{1, 2}})
+	bs := []block{
+		{line: 1, kind: blockDeleted, height: 20, sticky: true},
+		{line: 1, kind: blockApp, height: 30, sticky: true},
+		{line: 1, kind: blockSpacer, height: 10, sticky: true},
+		{line: 1, kind: blockApp, below: true, height: 40, sticky: true},
+		{line: 1, kind: blockDeleted, below: true, height: 10, sticky: true},
+		// A hidden nonsticky app block takes no room.
+		{line: 1, kind: blockApp, below: true, height: 50},
+	}
+	h.setBlocks(bs)
+	top := h.top(1)
+	for _, b := range bs {
+		if !b.sticky {
+			continue
+		}
+		bottom := top + float64(b.height)
+		want := 0
+		if b.kind == blockApp {
+			want = b.line
+		}
+		for _, y := range []float64{top, (top + bottom) / 2, bottom - 1} {
+			if got := h.lineAt(y); got != want {
+				t.Errorf("kind %d at height %v: line %d, want %d", b.kind, y, got, want)
+			}
+		}
+		top = bottom
+	}
+	if got := h.lineAt(top); got != 3 {
+		t.Fatalf("past the blocks: line %d, want 3", got)
+	}
+}
+
 // A hidden line's block stays visible exactly when it can stand in. A
 // partial-line or visible replacement keeps its text, not a second caret
 // target inside its hidden bytes.

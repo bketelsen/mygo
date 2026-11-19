@@ -346,9 +346,22 @@ func (h *heights) lineAt(y float64) int {
 			hi = m - 1
 		}
 	}
-	// A block standing in for hidden lines holds the height it takes.
+	// Only an app block standing in for hidden lines maps its own
+	// interval to that line. Sticky diff blocks keep the lookup below.
 	if lo+1 < h.n && h.isHidden(lo) && h.top(lo+1) > y {
-		return lo
+		top := h.top(lo)
+		i := sort.Search(len(h.blocks), func(i int) bool { return h.blocks[i].line >= lo })
+		for ; i < len(h.blocks) && h.blocks[i].line == lo; i++ {
+			b := &h.blocks[i]
+			if !b.sticky {
+				continue
+			}
+			bottom := top + float64(b.height)
+			if b.kind == blockApp && y >= top && y < bottom {
+				return lo
+			}
+			top = bottom
+		}
 	}
 	// A hidden line shares its top with the lines after it, up to the
 	// next shown.
