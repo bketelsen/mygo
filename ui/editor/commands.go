@@ -545,10 +545,14 @@ func (ed *editor) overFolds(off, to int) int {
 		if rep, ok := ed.standInWithin(ahead, to > off); ok {
 			return rep.Start
 		}
-		// A hidden prefix still has a start-of-buffer endpoint. Going
-		// back must not bounce to the first shown line and stop there.
+		// A hidden prefix has no caret at zero. Keep a stand-in already
+		// reached; otherwise stop at the first shown source position.
 		if to < off && sp.from == 0 {
-			return 0
+			if r.LineOf(off) <= sp.to {
+				return off
+			}
+			// The replacement can end within the first shown line.
+			return ed.overReplacements(0, r.LineStart(sp.to+1))
 		}
 		if to > off && sp.to+1 < r.LineCount() {
 			return r.LineStart(sp.to + 1)

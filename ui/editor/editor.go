@@ -677,8 +677,10 @@ func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {
 				ri--
 			} else {
 				prev := line - 1
+				first := v.text.LineStart(line)
 				for prev >= 0 && v.heights.isHidden(prev) {
 					if r, ok := ed.standIn(prev); ok {
+						first = r.Start
 						if rows++; rows == 0 {
 							return r.Start, goal
 						}
@@ -688,7 +690,9 @@ func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {
 					prev--
 				}
 				if prev < 0 {
-					return 0, goal
+					// Clamp to the first shown row or stand-in, not a
+					// hidden prefix, including one ending within a line.
+					return ed.overReplacements(0, first), goal
 				}
 				line, l = prev, v.line(prev)
 				ri = len(l.rows) - 1

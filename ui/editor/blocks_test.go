@@ -770,36 +770,70 @@ func TestBlocksStandInPage(t *testing.T) {
 	}
 }
 
-// A leading hidden range, with or without a stand-in after it, must not
-// trap a backward caret at the first shown line or at that stand-in.
+// Backward movement stops at the first shown text or stand-in, never
+// an invisible zero. Forward movement must still cross the replacements.
 func TestBlocksStandInWalkHiddenPrefix(t *testing.T) {
-	for _, src := range []string{"a\n", "gone\ntable\nend"} {
-		t.Run(src, func(t *testing.T) {
-			ct := newEditorTest(t, "", src)
-			buf := ct.st.Buffer
-			rs := []Replacement{hide(0, buf.Offset(Pos{Line: 1}))}
-			if buf.LineCount() > 2 {
-				rs = append(rs, hide(buf.Offset(Pos{Line: 1}), buf.Offset(Pos{Line: 2})))
-			}
-			ct.st.SetReplacements(rs)
-			ct.st.SetBlocks([]Block{tall(1, false, 40, "Block")})
-			ct.settle()
-			for _, cmd := range []Command{MoveRight, MoveLeft, MoveDown, MoveUp} {
-				start, end := 0, len(src)
-				if cmd == MoveLeft || cmd == MoveUp {
-					start, end = end, start
+	for _, prefix := range []struct{ name, text string }{
+		{"none", ""}, {"empty-line", "\n"}, {"one", "gone\n"}, {"multiple", "gone\nalso gone\n"},
+	} {
+		for _, withBlock := range []bool{false, true} {
+			for _, tail := range []string{"", "end"} {
+				for _, step := range []struct {
+					name string
+					cmd  Command
+					fwd  bool
+				}{{"left", MoveLeft, false}, {"up", MoveUp, false}, {"page-up", MovePageUp, false}, {"right", MoveRight, true}, {"down", MoveDown, true}} {
+					name := prefix.name + "/" + map[bool]string{false: "text", true: "stand-in"}[withBlock] + "/" + tail + "/" + step.name
+					t.Run(name, func(t *testing.T) {
+						src := prefix.text
+						var rs []Replacement
+						if src != "" {
+							rs = append(rs, hide(0, len(src)))
+						}
+						if withBlock {
+							src += "table\n"
+							rs = append(rs, hide(len(prefix.text), len(src)))
+						}
+						src += tail
+						ct := newEditorTest(t, "", src)
+						ct.st.SetReplacements(rs)
+						if withBlock {
+							line := ct.st.Buffer.Pos(len(prefix.text)).Line
+							ct.st.SetBlocks([]Block{tall(line, false, 40, "Block")})
+						}
+						ct.settle()
+						ed := &ct.st.ed
+						start, want := len(src), len(prefix.text)
+						if step.fwd {
+							start, want = 0, len(src)
+						}
+						ct.st.Select(start, start)
+						visited := start == len(prefix.text)
+						for n := 0; ; n++ {
+							at := ct.st.Cursor()
+							ed.run(step.cmd)
+							to := ct.st.Cursor()
+							visited = visited || to == len(prefix.text)
+							if _, ok := ed.caretRect(to); !ok {
+								t.Fatalf("%v moved from %d to an invisible stop %d, want endpoint %d", step.cmd, at, to, want)
+							}
+							if to == at {
+								if to != want {
+									t.Fatalf("%v stopped at %d, want endpoint %d", step.cmd, to, want)
+								}
+								break
+							}
+							if (to > at) != step.fwd || n > len(src)+1 {
+								t.Fatalf("%v moved from %d to %d, want endpoint %d", step.cmd, at, to, want)
+							}
+						}
+						if withBlock && !visited {
+							t.Fatal("movement skipped the valid stand-in stop")
+						}
+					})
 				}
-				ct.st.Select(start, start)
-				for n := 0; ct.st.Cursor() != end; n++ {
-					at := ct.st.Cursor()
-					ct.st.ed.run(cmd)
-					to := ct.st.Cursor()
-					if to == at || (to > at) != (end > start) || n > len(src) {
-						t.Fatalf("%v moved from %d to %d, want endpoint %d", cmd, at, to, end)
-					}
-				}
 			}
-		})
+		}
 	}
 }
 
@@ -825,7 +859,8 @@ func TestBlocksStandInNavigationKeepsFoldCache(t *testing.T) {
 	}
 }
 
-// Walking the text ends, whatever stands in where, each step moving on.
+// Walking ends only at the last text offset or the first shown text or
+// stand-in, not at an arbitrary no-progress step or an invisible zero.
 func TestBlocksStandInWalkEnds(t *testing.T) {
 	rng := rand.New(rand.NewPCG(1651, 2))
 	for range 150 {
@@ -857,7 +892,7 @@ func TestBlocksStandInWalkEnds(t *testing.T) {
 			cmd Command
 			fwd bool
 		}{{MoveRight, true}, {MoveLeft, false}, {MoveDown, true}, {MoveUp, false}} {
-			want := 0
+			want := firstShownCaret(t, ed)
 			if step.fwd {
 				ct.st.Select(0, 0)
 				want = len(src)
@@ -868,6 +903,9 @@ func TestBlocksStandInWalkEnds(t *testing.T) {
 				at := ct.st.Cursor()
 				ed.run(step.cmd)
 				to := ct.st.Cursor()
+				if _, ok := ed.caretRect(to); !ok {
+					t.Fatalf("%q with %+v and %+v: %v from %d left an invisible caret at %d", src, rs, bs, step.cmd, at, to)
+				}
 				if to == at {
 					if to != want {
 						t.Fatalf("%q with %+v and %+v: %v stopped at %d, want endpoint %d, step %d", src, rs, bs, step.cmd, to, want, n)
