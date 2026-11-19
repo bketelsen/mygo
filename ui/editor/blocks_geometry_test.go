@@ -1,7 +1,6 @@
 package editor
 
 import (
-	"math"
 	"strings"
 	"testing"
 
@@ -56,30 +55,70 @@ func TestBlocksDeletedLinePlacement(t *testing.T) {
 	}
 }
 
-// Blocks use the same effective text width as layout, including the wrap
-// column and minimum width, even with wrapping off and after a resize.
+// The block follows the actual wrap constraint, even with wrapping off.
+// Known ASCII column breaks independently check that constraint, rather
+// than restating the textWidth formula shared by blocks and text.
 func TestBlocksTextWidth(t *testing.T) {
-	for _, wrap := range []bool{false, true} {
-		ct := newEditorTest(t, "", "one\ntwo")
-		ct.st.SoftWrap = wrap
-		ct.st.SetBlocks([]Block{tall(0, false, 40, "Width")})
-		for _, column := range []int{0, 20, 40, 1, 0} {
-			ct.st.WrapColumn = column
-			for _, width := range []int{600, 180, 900} {
-				ct.tt.SetSize(width, 400)
-				ct.settle()
-				ed := &ct.st.ed
-				want := float32(width) - ed.textX - ed.trackWidth() - 4
-				if column > 0 {
-					want = min(want, float32(column)*ed.view.charWidth)
-				}
-				want = float32(math.Floor(float64(max(want, 8*ed.view.charWidth))))
-				room, ok := ct.tt.Find("Width")
-				if !ok || room.W != want || wrap && ed.view.wrapWidth != want {
-					t.Fatalf("wrap %v, column %d, width %d: block %+v (%v), want %v; text wraps at %v", wrap, column, width, room, ok, want, ed.view.wrapWidth)
-				}
-			}
+	ct := newEditorTest(t, "", strings.Repeat("x", 256))
+	// Above the first line, the block stays visible even at the minimum
+	// width, where the text wraps through more than a viewport of rows.
+	ct.st.SetBlocks([]Block{tall(0, true, 40, "Width")})
+	measure := func(column, width int) (float32, int) {
+		t.Helper()
+		ct.st.WrapColumn = column
+		ct.tt.SetSize(width, 400)
+		ct.st.SoftWrap = false
+		ct.settle()
+		plain, ok := ct.tt.Find("Width")
+		if !ok || len(ct.st.ed.view.line(0).rows) != 1 {
+			t.Fatalf("column %d, width %d: missing block or wrapped text with SoftWrap off", column, width)
 		}
+		ct.st.SoftWrap = true
+		ct.settle()
+		room, ok := ct.tt.Find("Width")
+		v := &ct.st.ed.view
+		if !ok || room.W != plain.W || room.W != v.wrapWidth {
+			t.Fatalf("column %d, width %d: block width %v (found %v), unwrapped %v, text constraint %v", column, width, room.W, ok, plain.W, v.wrapWidth)
+		}
+		l := v.line(0)
+		if len(l.rows) < 2 {
+			t.Fatal("the long text did not wrap")
+		}
+		return room.W, l.rows[0].to - l.rows[0].from
+	}
+	wide, wideChars := measure(0, 600)
+	narrow, narrowChars := measure(0, 180)
+	wider, widerChars := measure(0, 900)
+	if !(narrow < wide && wide < wider && narrowChars < wideChars && wideChars < widerChars) {
+		t.Fatalf("resize did not change block width and actual row capacity together: widths %v/%v/%v, characters %d/%d/%d", narrow, wide, wider, narrowChars, wideChars, widerChars)
+	}
+	checkColumn := func(column int) (float32, int) {
+		t.Helper()
+		width, chars := measure(column, 600)
+		// Flooring DIP widths can cost one ASCII cell, but never add one.
+		if chars < column-1 || chars > column {
+			t.Fatalf("WrapColumn %d put %d characters in the first text row", column, chars)
+		}
+		return width, chars
+	}
+	col20, chars20 := checkColumn(20)
+	if width, chars := measure(20, 900); width != col20 || chars != chars20 {
+		t.Fatal("a wider viewport escaped the 20-column constraint")
+	}
+	if width, chars := measure(20, 180); width >= col20 || chars >= chars20 {
+		t.Fatal("a narrow viewport did not constrain the block and text together")
+	}
+	col40, _ := checkColumn(40)
+	if col40 <= col20 {
+		t.Fatal("a larger column did not widen the block")
+	}
+	minimum, minChars := measure(1, 600)
+	col8, chars8 := checkColumn(8)
+	if minimum != col8 || minChars != chars8 {
+		t.Fatal("the minimum width is not the observed 8-column layout")
+	}
+	if width, chars := measure(0, 600); width != wide || chars != wideChars {
+		t.Fatal("removing WrapColumn reused a stale block width or text layout")
 	}
 }
 

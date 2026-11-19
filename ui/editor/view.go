@@ -74,7 +74,7 @@ type view struct {
 	// in; nextBlock is the last id given. rows are what they take in the
 	// heights, as of rowsHeight, rowsFolded and rowsRepls, unless block
 	// identity, order, line, placement or effective height changed.
-	blocks, blockScratch []appBlock
+	blocks, blockScratch appBlocks
 	nextBlock            int
 	rows                 []block
 	rowsHeight           float32

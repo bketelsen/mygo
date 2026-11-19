@@ -44,6 +44,16 @@ type appBlock struct {
 	measured bool // height is what the element's layout said
 }
 
+// appBlocks compares blocks by pointer. Sorting through a view's slice
+// field avoids boxing a temporary slice header for sort.Interface.
+type appBlocks []appBlock
+
+func (bs *appBlocks) Len() int { return len(*bs) }
+func (bs *appBlocks) Less(i, j int) bool {
+	return compareBlocks(&(*bs)[i], &(*bs)[j]) < 0
+}
+func (bs *appBlocks) Swap(i, j int) { (*bs)[i], (*bs)[j] = (*bs)[j], (*bs)[i] }
+
 // rowHeight is the measured height, or the app's guess until measured.
 func (b *appBlock) rowHeight(lineHeight float32) float32 {
 	if b.measured {
@@ -87,8 +97,9 @@ func (ed *editor) setBlocks(bs []Block) {
 			in = append(in, appBlock{Block: b})
 		}
 	}
-	if !slices.IsSortedFunc(in, func(a, b appBlock) int { return compareBlocks(&a, &b) }) {
-		slices.SortStableFunc(in, func(a, b appBlock) int { return compareBlocks(&a, &b) })
+	v.blockScratch = in
+	if !sort.IsSorted(&v.blockScratch) {
+		sort.Stable(&v.blockScratch)
 	}
 	old := v.blocks
 	i := 0
@@ -108,9 +119,17 @@ func (ed *editor) setBlocks(bs []Block) {
 	}
 	// UI callbacks and options always update, but only effective row
 	// changes invalidate geometry. Duplicate identities match in order.
-	if !slices.EqualFunc(in, old, func(a, b appBlock) bool {
-		return a.id == b.id && compareBlocks(&a, &b) == 0 && a.rowHeight(v.lineHeight) == b.rowHeight(v.lineHeight)
-	}) {
+	same := len(in) == len(old)
+	if same {
+		for j := range in {
+			a, b := &in[j], &old[j]
+			if a.id != b.id || compareBlocks(a, b) != 0 || a.rowHeight(v.lineHeight) != b.rowHeight(v.lineHeight) {
+				same = false
+				break
+			}
+		}
+	}
+	if !same {
 		v.blocksStale = true
 	}
 	// The slice given last is the scratch of the next, its functions let go.
@@ -144,8 +163,8 @@ func (v *view) settleBlocks() {
 		b.at = v.text.LineStart(b.Line)
 	}
 	// Lines joined bring blocks above and below to one line.
-	if !slices.IsSortedFunc(v.blocks, func(a, b appBlock) int { return compareBlocks(&a, &b) }) {
-		slices.SortStableFunc(v.blocks, func(a, b appBlock) int { return compareBlocks(&a, &b) })
+	if !sort.IsSorted(&v.blocks) {
+		sort.Stable(&v.blocks)
 		v.blocksStale = true
 	}
 }
