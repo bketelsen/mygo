@@ -358,7 +358,7 @@ func (ed *editor) run(cmd Command) bool {
 		return true
 	case ScrollCursorCenter:
 		if cr, ok := ed.caretRect(ed.primary().head); ok {
-			ed.setScroll(float64(cr.Y) - float64(ed.viewH-ed.view.lineHeight)/2)
+			ed.setScroll(float64(cr.Y) - float64(ed.viewH-min(cr.H, ed.viewH))/2)
 		}
 		return true
 	case ScrollLineUp, ScrollLineDown:

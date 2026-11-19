@@ -247,7 +247,7 @@ type editor struct {
 
 	// placed are the elements of replacements and blocks the last build
 	// placed, at the scroll of placedScroll, which a frame painting them
-	// elsewhere builds again (replacementsMoved); placeScratch is where
+	// elsewhere builds again (elementsMoved); placeScratch is where
 	// they are found anew.
 	placed, placeScratch []placed
 	placedScroll         [2]float64
@@ -546,8 +546,7 @@ func (ed *editor) caretRect(off int) (ui.Rect, bool) {
 	line := v.text.LineOf(off)
 	if v.heights.isHidden(line) {
 		if r, ok := ed.standIn(line); ok && off == r.Start {
-			top, _ := ed.standInBox(r)
-			return ui.Rect{Y: float32(top), W: 2, H: v.lineHeight}, true
+			return ed.standInCaretRect(r), true
 		}
 		return ui.Rect{}, false
 	}
@@ -772,11 +771,12 @@ func (ed *editor) doReveal() {
 	lh := float64(v.lineHeight)
 	top, bottom := float64(cr.Y), float64(cr.Y+cr.H)
 	h := float64(ed.viewH)
-	margin := min(float64(ed.o.scrollMargin)*lh, max(0, (h-lh)/2))
+	height := min(float64(cr.H), h)
+	margin := min(float64(ed.o.scrollMargin)*lh, max(0, (h-height)/2))
 	switch mode {
 	case revealCenter:
 		if top < ed.scrollY || bottom > ed.scrollY+h {
-			ed.setScroll(top - (h-lh)/2)
+			ed.setScroll(top - (h-height)/2)
 		}
 	case revealTop:
 		ed.setScroll(top - margin)
@@ -789,7 +789,8 @@ func (ed *editor) doReveal() {
 	}
 	// Sideways.
 	w := ed.r.W - ed.textX - 8
-	if !v.wrap && w > 0 {
+	// A stand-in caret stays fixed horizontally with its block.
+	if !v.wrap && w > 0 && !v.heights.isHidden(line) {
 		x := cr.X
 		em := v.charWidth * 2
 		if x-em < ed.scrollX {

@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-18",
+  "scope": "ui/editor",
+  "correction": "Use one full-height, text-relative stand-in caret cell for painting, IME anchors and reveal, with the same cursor shapes and focus behavior as source carets. Account for the fixed block position during horizontal scrolling. Give blocks the same effective width as text layout, including WrapColumn, its minimum width and resize invalidation.",
+  "evidence": "egoist/mygo PR1662 (https://github.com/egoist/mygo/pull/1662), review PRR_kwDOUtDQys8AAAABYzphkQ, point 6; TestBlocksTextWidth failed before the fix with width 526 instead of 160 at WrapColumn 20. TestBlocksStandInCaretGeometryAndShape exposed horizontal reveal changing scroll from 37 to 0 and guards the full-height caret cell, IME position, all painted shapes, focus and blinking. TestBlocksStandInCaretReveal checks whole-block reveal and centering after measurement.",
+  "promoted_to": "ui/editor/blocks_geometry_test.go"
+}

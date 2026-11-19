@@ -19,10 +19,10 @@ type Block struct {
 	// Above puts it above the line, else it goes below.
 	Above bool
 	// Content builds it: e is the element the editor places there, as
-	// wide as the text and as high as what Content puts in it, to style
-	// and fill as the editor's parts are (RenderFindBar), and b the block
-	// as the edits since it was set moved it. A press on it goes to the
-	// text, unless Interactive.
+	// wide as the text layout (including WrapColumn), and as high as
+	// what Content puts in it. Style and fill it as the editor's parts
+	// (RenderFindBar). b is the block as edits since it was set moved it.
+	// A press on it goes to the text, unless Interactive.
 	Content func(c *ui.Context, e ui.Element, b Block)
 	// Height is how high it is taken to be until it has shown, as only
 	// those in view are laid out: a row when 0. Its element then says.
@@ -127,8 +127,9 @@ func (v *view) moveBlocks(cs []change) {
 	}
 }
 
-// settleBlocks finds the lines of the blocks after edits moved them, and
-// that of a block whose line was deleted, where the line was.
+// settleBlocks attaches each block to the line at its mapped offset.
+// When its line is deleted, it attaches to the surviving line at that
+// position. Above stays unchanged.
 func (v *view) settleBlocks() {
 	if len(v.blocks) == 0 {
 		return
@@ -249,6 +250,19 @@ func (ed *editor) standInBox(r Replacement) (top, bottom float64) {
 	return h.top(t.LineOf(r.Start)), h.top(t.LineOf(r.End))
 }
 
+// standInCaretRect returns the full caret cell in text-content coordinates.
+// Blocks stay fixed horizontally, so scrollX cancels the text's offset
+// when consumers place this cell in the viewport. Underlines paint only
+// the bottom of the cell; IME anchors and reveal still use its full height.
+func (ed *editor) standInCaretRect(r Replacement) ui.Rect {
+	top, bottom := ed.standInBox(r)
+	width := float32(2)
+	if ed.o.cursorShape == CursorBlock || ed.o.cursorShape == CursorUnderline {
+		width = ed.view.charWidth
+	}
+	return ui.Rect{X: ed.scrollX - 3, Y: float32(top), W: width, H: float32(bottom - top)}
+}
+
 // paintStandIns paints what shows of the selections on the blocks
 // standing in for lines in view: as selected behind those a selection
 // covers, and the caret of those it stands at, tall as the block, in the
@@ -277,7 +291,10 @@ func (ed *editor) paintStandIns(p *ui.Painter, r ui.Rect, f *frame) {
 				p.Fill(ui.Rect{X: r.X + ed.gutterW, Y: y, W: r.W - ed.gutterW, H: h}, selColor, 0)
 			}
 			if f.caretsOn && s.head == rep.Start {
-				p.Fill(ui.Rect{X: r.X + ed.textX - 3, Y: y, W: 2, H: h}, ct.Cursor, 0)
+				cr := ed.standInCaretRect(rep)
+				cr.X += r.X + ed.textX - ed.scrollX
+				cr.Y = r.Y + float32(float64(cr.Y)-ed.scrollY)
+				ed.paintCaret(p, cr)
 			}
 		}
 	}
@@ -292,7 +309,7 @@ func (ed *editor) placeBlocks(y0, y1 float64, dst []placed) []placed {
 	}
 	ed.eachBlock(h.lineAt(y0), min(h.lineAt(y1), h.n-1), func(b *block, top float64) {
 		if b.kind == blockApp {
-			dst = append(dst, placed{start: b.to, block: true, rect: ui.Rect{Y: float32(top - ed.scrollY), H: b.height}})
+			dst = append(dst, placed{blockIndex: b.to, block: true, rect: ui.Rect{Y: float32(top - ed.scrollY), W: ed.textWidth(), H: b.height}})
 		}
 	})
 	return dst
@@ -302,15 +319,15 @@ func (ed *editor) placeBlocks(y0, y1 float64, dst []placed) []placed {
 // measures.
 func (ed *editor) buildBlock(c *ui.Context, p placed) {
 	v := &ed.view
-	if p.start >= len(v.blocks) {
+	if p.blockIndex >= len(v.blocks) {
 		return
 	}
-	b := &v.blocks[p.start]
+	b := &v.blocks[p.blockIndex]
 	e := ui.Box(c).Key("block " + strconv.Itoa(b.id)).Absolute().
 		Left(ed.textX - ed.gutterW).Top(p.rect.Y).
-		Width(max(0, ed.laidW-ed.textX-ed.trackWidth()-4))
+		Width(p.rect.W)
 	ed.describeElement(e, b.Label, b.Interactive)
-	built := builtBlock{p.start, b.id, e}
+	built := builtBlock{p.blockIndex, b.id, e}
 	// What the last frame laid out, for a frame that paints none, as of
 	// an editor as high as its content out of view.
 	ed.measureBlock(built)

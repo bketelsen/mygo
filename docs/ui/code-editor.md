@@ -504,12 +504,14 @@ editor.View(c, app.code).Grow(1).FillWidth()
 ```
 
 - **`Line`** and **`Above`** say where it goes: below the line, or above
-  it. Blocks move with edits, a block going with its line's text and
-  staying where a line deleted was. Set them again as the text changes:
-  those at the place of one shown keep their elements and heights.
-- **`Content`** is given the element the editor places, as wide as the
-  text, as parts are (see [Bars and popups](#bars-and-popups)). It stays
-  in place as the text scrolls sideways.
+  it. Blocks move with their line's text. Deleting that line attaches
+  the block to the surviving line at that position, with `Above` unchanged.
+  Set them again as the text changes: those at the place of one shown
+  keep their elements and heights.
+- **`Content`** is given the element the editor places, using the text
+  layout's width, including its `WrapColumn` limit and minimum width, as
+  parts are (see [Bars and popups](#bars-and-popups)). It stays in place
+  as the text scrolls sideways.
 - **The height** is what the element lays out to. Only the blocks in view
   are built, so a block not shown yet is taken to be `Height` high, or a
   row, and measured as it shows, the lines in view staying where they are.
@@ -529,7 +531,10 @@ if !hasCaret(table) {
 
 Carets stop on such a block once, at the start of the range, showing
 before it, and a press on it puts the caret there: an app showing the
-source of what has a caret shows it then. Selecting across it tints it,
+source of what has a caret shows it then. `CursorShape` applies over the
+whole stand-in: a bar or block spans its height, and an underline sits
+at its bottom. Without focus, only the block's outline stays visible.
+Selecting across it tints it,
 and deleting next to it deletes all of it. A fold hides the blocks of its
 lines.
 

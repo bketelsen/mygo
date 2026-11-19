@@ -49,11 +49,7 @@ func (ed *editor) layout(w, h, scale float32) {
 	}
 	ed.viewH, ed.laidW = h, w
 	wrap := ed.o.wrap != ed.toggledWrap
-	ww := w - ed.textX - ed.trackWidth() - 4
-	if ed.o.wrapColumn > 0 {
-		ww = min(ww, float32(ed.o.wrapColumn)*v.charWidth)
-	}
-	v.setWrap(wrap, max(ww, v.charWidth*8))
+	v.setWrap(wrap, ed.textWidth())
 	if wrap {
 		// Wrapped lines fit: nothing is sideways.
 		ed.scrollX = 0
@@ -68,6 +64,17 @@ func (ed *editor) layout(w, h, scale float32) {
 	}
 	v.heights.setHidden(ed.hiddenLines())
 	v.heights.setBlocks(blocks)
+}
+
+// textWidth is the effective width of text layout and app blocks. Compute
+// it even without wrapping: view.wrapWidth is not updated in that mode.
+func (ed *editor) textWidth() float32 {
+	v := &ed.view
+	w := ed.laidW - ed.textX - ed.trackWidth() - 4
+	if ed.o.wrapColumn > 0 {
+		w = min(w, float32(ed.o.wrapColumn)*v.charWidth)
+	}
+	return float32(math.Floor(float64(max(w, v.charWidth*8))))
 }
 
 func mergeSpans(spans []lineSpan) []lineSpan {
@@ -164,10 +171,10 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 		// keyboard.
 		f.caretsOn = true
 	}
-	// Scrolled, or laid out anew, since the elements of replacements were
+	// Scrolled, or laid out anew, since the app's elements were
 	// placed, by a frame painting without building, as dragging past the
 	// edge scrolls: place them again.
-	if ed.replacementsMoved() {
+	if ed.elementsMoved() {
 		ed.services.Invalidate()
 	}
 	ed.paintBlocks(p, r, &f)
@@ -553,21 +560,34 @@ func (ed *editor) paintLine(p *ui.Painter, r ui.Rect, f *frame, line int, g line
 					continue
 				}
 				x := ox + v.xOf(l, row, d)
-				switch ed.o.cursorShape {
-				case CursorBlock:
-					r := ui.Rect{X: x, Y: y, W: ed.caretWidth(l, row, s.head, x-ox), H: lh}
-					if ed.focused {
-						p.Fill(r, ct.Cursor.Alpha(0.4), 0)
-					} else {
-						p.Stroke(r, ct.Cursor, 0, 1)
-					}
-				case CursorUnderline:
-					p.Fill(ui.Rect{X: x, Y: y + lh - 2, W: ed.caretWidth(l, row, s.head, x-ox), H: 2}, ct.Cursor, 0)
-				default:
-					p.Fill(ui.Rect{X: x - 1, Y: y, W: 2, H: lh}, ct.Cursor, 0)
+				cr := ui.Rect{X: x - 1, Y: y, W: 2, H: lh}
+				if ed.o.cursorShape == CursorBlock || ed.o.cursorShape == CursorUnderline {
+					cr.X, cr.W = x, ed.caretWidth(l, row, s.head, x-ox)
 				}
+				ed.paintCaret(p, cr)
 			}
 		}
+	}
+}
+
+// paintCaret uses the same shape and focus treatment for source text and
+// stand-ins. The cell stays full-height for IME anchors and reveal.
+func (ed *editor) paintCaret(p *ui.Painter, cell ui.Rect) {
+	color := ed.theme.Cursor
+	switch ed.o.cursorShape {
+	case CursorBlock:
+		if ed.focused {
+			p.Fill(cell, color.Alpha(0.4), 0)
+		} else {
+			p.Stroke(cell, color, 0, 1)
+		}
+	case CursorUnderline:
+		h := min(float32(2), cell.H)
+		cell.Y += cell.H - h
+		cell.H = h
+		p.Fill(cell, color, 0)
+	default:
+		p.Fill(cell, color, 0)
 	}
 }
 

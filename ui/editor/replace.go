@@ -347,12 +347,13 @@ func (v *view) objectWidth(r *Replacement) float32 {
 	return v.lineHeight
 }
 
-// placed is where an element is: a replacement's, starting at start, in
-// the content, or a block's, start its index in view.blocks, in the view.
+// placed is where an element is: a replacement in content coordinates,
+// or a block in view coordinates. Offsets and block indices stay separate.
 type placed struct {
-	start int
-	block bool
-	rect  ui.Rect
+	start      int // the replacement's byte offset
+	blockIndex int // the index in view.blocks when block is true
+	block      bool
+	rect       ui.Rect
 }
 
 // placeReplacements appends to dst the elements of the replacements in
@@ -403,7 +404,7 @@ func (ed *editor) buildElements(c *ui.Context) {
 	if ed.o.fitContent {
 		h = float32(v.heights.total())
 	}
-	ui.Box(c).Key("code replacements").Absolute().Left(ed.gutterW).Top(0).
+	ui.Box(c).Key("code elements").Absolute().Left(ed.gutterW).Top(0).
 		Width(max(0, ed.laidW-ed.gutterW)).Height(h).Clip().PassThrough().Children(func() {
 		for _, p := range ed.placed {
 			if p.block {
@@ -449,11 +450,10 @@ func (v *view) replacementAt(off int) (Replacement, bool) {
 	return Replacement{}, false
 }
 
-// replacementsMoved reports whether the elements of the replacements and
-// the blocks in view are not where the last build placed them, as when a
-// frame painted without building scrolled, or a block measured otherwise
-// than it was taken to be, and builds them again.
-func (ed *editor) replacementsMoved() bool {
+// elementsMoved reports whether the app's elements no longer match their
+// last placement, as after scrolling, resizing or measuring a block. The
+// caller schedules a build to place them again.
+func (ed *editor) elementsMoved() bool {
 	if ed.view.contents == 0 && len(ed.view.blocks) == 0 && len(ed.placed) == 0 {
 		return false
 	}

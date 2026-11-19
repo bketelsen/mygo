@@ -606,14 +606,14 @@ func TestReplacementsFollowScroll(t *testing.T) {
 	ct.tt.Frame()
 	ct.tt.Frame()
 	ed := &ct.st.ed
-	if ed.replacementsMoved() {
+	if ed.elementsMoved() {
 		t.Fatal("placed elements count as moved")
 	}
 	if ct.tt.FramePending() {
 		t.Fatal("placed elements keep asking for frames")
 	}
 	ed.scrollY += 10
-	if !ed.replacementsMoved() {
+	if !ed.elementsMoved() {
 		t.Fatal("scrolling doesn't count as moving them")
 	}
 }

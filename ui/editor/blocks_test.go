@@ -615,11 +615,11 @@ func TestBlocksScroll(t *testing.T) {
 	if got, want := moved.Y, room.Y-float32(ed.scrollY); got != want {
 		t.Fatalf("the block is at %v, want %v", got, want)
 	}
-	if ed.replacementsMoved() {
+	if ed.elementsMoved() {
 		t.Fatal("placed blocks count as moved")
 	}
 	ed.scrollY += 10
-	if !ed.replacementsMoved() {
+	if !ed.elementsMoved() {
 		t.Fatal("scrolling doesn't count as moving them")
 	}
 	ed.scrollY -= 10
