@@ -75,6 +75,12 @@ behaves and to move it:
   for the next layout alone: call it in the frame a click opens a fold in
   the last message, and the line clicked stays under the pointer rather
   than following the end as the row grows.
+- `MoveAnimation`, with a `Key`, makes the rows glide to their places as
+  rows come, go or move around them, rather than jump there: the rows
+  below a row that went close its gap, those below rows that came open
+  theirs, and rows a `ScrollTo` in the same frame brings into view come
+  in with them, as new items sliding in at the top of a feed. Scrolling
+  moves the rows at once, as does a desktop asking for less motion.
 - `Header` names the rows heading sections: the header of the section at
   the top stays pinned there while its rows scroll under it, until the next
   header pushes it away. Give headers a background.
@@ -306,8 +312,10 @@ ui.List(c, &app.list, len(app.chats), func(i int) {
 ```
 
 It is called as the rows in view come near the end, not in every frame while
-they stay there, and again once they left it or the rows changed in number,
-as when a page was added. Only the user's scrolling calls it: `ScrollTo`,
+they stay there. Once they left it, or the rows changed in number, as when a
+page was added, the user's next scroll near the end calls it again: a page
+arriving does not call it by itself, so a list never loads page after page
+on its own. Only the user's scrolling calls it: `ScrollTo`,
 `ScrollIntoView` and `ScrollToEnd` (a notification opening a message far
 down, say), the list showing first, being resized or built at another
 height, and rows sorted again do not. A list whose first page does not fill

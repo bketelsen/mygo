@@ -127,6 +127,56 @@ func TestCodeEditorTyping(t *testing.T) {
 	ct.want("([abc])")
 }
 
+func TestCodeEditorAutoPairCJK(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		lang string
+		init string
+		typ  string
+		want string
+	}{
+		// Symmetric quotes and backticks auto-pair after CJK characters.
+		{name: "double-quote-after-han", lang: "go", init: "中|", typ: `"`, want: `中"|"`},
+		{name: "single-quote-after-han", lang: "python", init: "中文|", typ: `'`, want: `中文'|'`},
+		{name: "backtick-after-han", lang: "markdown", init: "中文|", typ: "`", want: "中文`|`"},
+		{name: "quote-after-hiragana", lang: "go", init: "あ|", typ: `"`, want: `あ"|"`},
+		{name: "quote-after-katakana", lang: "go", init: "ア|", typ: `"`, want: `ア"|"`},
+		{name: "quote-after-hangul", lang: "go", init: "한|", typ: `"`, want: `한"|"`},
+		{name: "backtick-after-hiragana", lang: "markdown", init: "あ|", typ: "`", want: "あ`|`"},
+		// Brackets and quotes auto-pair before closing CJK/smart brackets and trailing punctuation.
+		{name: "paren-before-cjk-period", lang: "markdown", init: "你好|。", typ: "(", want: "你好(|)。"},
+		{name: "bracket-before-cjk-comma", lang: "markdown", init: "你好|，", typ: "[", want: "你好[|]，"},
+		{name: "paren-before-cjk-comma", lang: "markdown", init: "|，", typ: "(", want: "(|)，"},
+		{name: "paren-before-cjk-closing-paren", lang: "markdown", init: "|）", typ: "(", want: "(|)）"},
+		{name: "paren-before-cjk-closing-corner", lang: "markdown", init: "「你好|」", typ: "(", want: "「你好(|)」"},
+		{name: "quote-after-han-before-cjk-period", lang: "go", init: "你好|。", typ: `"`, want: `你好"|"。`},
+		{name: "quote-before-cjk-closing-quote", lang: "go", init: "你好|”", typ: `"`, want: `你好"|"”`},
+		{name: "paren-before-cjk-closing-single-quote", lang: "markdown", init: "‘你好|’", typ: "(", want: "‘你好(|)’"},
+		{name: "paren-before-cjk-tilde", lang: "markdown", init: "你好|～", typ: "(", want: "你好(|)～"},
+		{name: "paren-before-cjk-middle-dot", lang: "markdown", init: "你好|·", typ: "(", want: "你好(|)·"},
+		// Do not auto-pair before opening CJK/smart brackets/quotes or general fullwidth symbols.
+		{name: "no-autopair-before-fullwidth-open-paren", lang: "markdown", init: "|（a）", typ: "(", want: "(|（a）"},
+		{name: "no-autopair-before-cjk-open-corner", lang: "go", init: "|「a」", typ: `"`, want: `"|「a」`},
+		{name: "no-autopair-before-smart-open-double-quote", lang: "markdown", init: "|“a”", typ: "(", want: "(|“a”"},
+		{name: "no-autopair-before-smart-open-single-quote", lang: "markdown", init: "|‘a’", typ: "(", want: "(|‘a’"},
+		{name: "no-autopair-before-fullwidth-hash", lang: "markdown", init: "|＃a", typ: "(", want: "(|＃a"},
+		{name: "no-autopair-before-fullwidth-quote", lang: "markdown", init: "|＂a", typ: "(", want: "(|＂a"},
+		// Latin contractions and trailing word characters still do not auto-pair.
+		{name: "latin-contraction", lang: "python", init: "don|", typ: `'`, want: "don'|"},
+		{name: "latin-contraction-before-ascii-apostrophe", lang: "python", init: "don|'t", typ: `'`, want: "don'|'t"},
+		{name: "latin-contraction-before-curly-apostrophe", lang: "python", init: "don|’t", typ: `'`, want: "don'|’t"},
+		{name: "latin-double-quote", lang: "go", init: "word|", typ: `"`, want: `word"|`},
+		// Do not auto-pair immediately before another Han character.
+		{name: "before-han-char", lang: "go", init: "中|文", typ: `"`, want: `中"|文`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ct := newEditorTest(t, tc.lang, tc.init)
+			ct.typ(tc.typ)
+			ct.want(tc.want)
+		})
+	}
+}
+
 func TestCodeEditorNewline(t *testing.T) {
 	ct := newEditorTest(t, "go", "func main() {|}")
 	ct.key(0, ui.KeyEnter)
@@ -564,6 +614,22 @@ func TestCodeEditorComposition(t *testing.T) {
 	ct.want("a日本|b\nc日本|d")
 	ct.key(ui.Cmd, ui.KeyZ)
 	ct.want("a|b\nc|d")
+}
+
+// Enter while an input method composes is its own, as choosing a
+// candidate: the editor breaks no line and leaves the composition to the
+// input method, which commits it (#1815).
+func TestCodeEditorComposingEnter(t *testing.T) {
+	ct := newEditorTest(t, "", "a|b")
+	ct.tt.Compose("に", 1)
+	ct.key(0, ui.KeyEnter)
+	ct.want("aに|b")
+	if _, marked := ct.st.ed.MarkedRange(); !marked {
+		t.Fatal("Enter ended the composition")
+	}
+	ct.tt.Type("に")
+	ct.key(0, ui.KeyEnter)
+	ct.want("aに\n|b")
 }
 
 func TestCodeEditorFind(t *testing.T) {
@@ -1113,5 +1179,41 @@ func TestHeightsZeroValue(t *testing.T) {
 	}
 	if got := h.lineAt(10); got != 0 {
 		t.Fatalf("lineAt of the zero heights = %d, want 0", got)
+	}
+}
+
+// A caret alone cuts its line even when it is the last, which has no newline
+// of its own: the line goes, and the caret lands at the end of the one above.
+func TestCodeEditorCutLastLine(t *testing.T) {
+	ct := newEditorTest(t, "", "one\ntw|o")
+	ct.key(ui.Cmd, ui.KeyX)
+	ct.want("one|")
+	if got := ct.tt.Clipboard(); got != "two\n" {
+		t.Errorf("cut %q", got)
+	}
+	// An empty last line goes too, rather than cutting nothing.
+	ct = newEditorTest(t, "", "one\n|")
+	ct.key(ui.Cmd, ui.KeyX)
+	ct.want("one|")
+	// The only line is emptied, with nothing above to take.
+	ct = newEditorTest(t, "", "o|ne")
+	ct.key(ui.Cmd, ui.KeyX)
+	ct.want("|")
+	// A line in the middle still takes its own newline.
+	ct = newEditorTest(t, "", "one\nt|wo\nthree")
+	ct.key(ui.Cmd, ui.KeyX)
+	ct.want("one\n|three")
+}
+
+// Comment toggling on blank lines has nothing to uncomment, so it comments.
+func TestCodeEditorToggleCommentBlankLine(t *testing.T) {
+	ct := newEditorTest(t, "sql", "select 1;\n|")
+	ct.key(ui.Cmd, ui.KeySlash)
+	if got := ct.st.Buffer.String(); got != "select 1;\n-- " {
+		t.Fatalf("a blank line gave %q", got)
+	}
+	ct.key(ui.Cmd, ui.KeySlash)
+	if got := ct.st.Buffer.String(); got != "select 1;\n" {
+		t.Errorf("toggled back to %q", got)
 	}
 }
