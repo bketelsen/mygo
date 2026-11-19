@@ -302,9 +302,10 @@ func (ed *editor) paintLines(p *ui.Painter, r ui.Rect, f *frame) {
 		v.paintRow(p, cl, &row, r.X+ed.textX-ed.scrollX, y, &cc, func(int, ui.Color) ui.Color { return muted })
 	}
 	for line := f.first; line <= f.last; line++ {
-		if g := h.geometry(line); !g.hidden {
-			ed.paintLine(p, r, f, line, g)
+		if h.isHidden(line) {
+			continue
 		}
+		ed.paintLine(p, r, f, line, h.geometry(line))
 	}
 }
 

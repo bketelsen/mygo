@@ -405,7 +405,21 @@ func (h *heights) blocksOf(line int) (above, below []block) {
 }
 
 func stickyBlocks(bs []block) []block {
-	var out []block
+	n := 0
+	for _, b := range bs {
+		if b.sticky {
+			n++
+		}
+	}
+	if n == len(bs) {
+		return bs
+	}
+	if n == 0 {
+		return nil
+	}
+	// Only mixed blocks need a filtered copy. Never compact in place:
+	// bs belongs to the height snapshot and also serves shown lines.
+	out := make([]block, 0, n)
 	for _, b := range bs {
 		if b.sticky {
 			out = append(out, b)
