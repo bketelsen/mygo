@@ -1,7 +1,0 @@
-{
-  "date": "2026-11-18",
-  "scope": "ui/editor",
-  "correction": "Caret walk guards must require the buffer endpoint, not accept a stationary caret elsewhere. Scroll anchoring guards must measure a real height change in a built block and compare the rendered screen position of previously visible text. Preserve cached folds when navigation merges hidden replacement spans.",
-  "evidence": "egoist/mygo PR1662 (https://github.com/egoist/mygo/pull/1662), review PRR_kwDOUtDQys8AAAABYzphkQ, point 4; the strengthened TestBlocksStandInWalkEnds failed on a hidden prefix at offset 2 instead of 0; TestBlocksScroll measured growth from 80 to 140 while scroll stayed 130 instead of 190 and rendered text moved from screen y 10 to 70. Targeted guards cover hidden prefixes, navigation fold-cache separation and scrolling within a tall block.",
-  "promoted_to": "ui/editor/blocks_test.go"
-}

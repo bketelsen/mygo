@@ -1,7 +1,0 @@
-{
-  "date": "2026-11-18",
-  "scope": "ui/editor",
-  "correction": "Keep the complete stand-in block and underline caret cells inside the margin before opaque content, preserving the bar position. Use text column 0, not the painted viewport-relative x, when deriving a new add-cursor goal at a stand-in. Guard the full styled-row height in reveal, centering commands and go-to previews.",
-  "evidence": "egoist/mygo PR1662 (https://github.com/egoist/mygo/pull/1662), cross-review follow-up on stand-in caret geometry. Before the fix, TestBlocksStandInOpaqueCaret failed for filled blocks, outlines and underlines with line numbers on and off. TestBlocksStandInAddCursorGoal added offset 4 with goal 34 at horizontal scroll 37, instead of offset 0 with goal 0. TestAddCursorScrolledTextGoal preserves ordinary text-column behavior. TestLineStylesCaretRevealAndCenter covers the existing cr.H behavior for rows of height 120, 360 and 600, including go-to preview.",
-  "promoted_to": "ui/editor/blocks_geometry_test.go:TestBlocksStandInOpaqueCaret; ui/editor/blocks_geometry_test.go:TestBlocksStandInAddCursorGoal; ui/editor/line_styles_test.go:TestLineStylesCaretRevealAndCenter"
-}

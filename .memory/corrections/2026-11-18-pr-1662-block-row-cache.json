@@ -1,7 +1,0 @@
-{
-  "date": "2026-11-18",
-  "scope": "ui/editor",
-  "correction": "Invalidate block row geometry only for effective changes, reuse row buffers, and compare heights against an independent value snapshot rather than caller slice identity. Cache fold spans separately from merged hidden lines, and use typed sorting to keep unchanged setters, layout and stand-in lookup allocation-free after warm-up.",
-  "evidence": "egoist/mygo PR1662 (https://github.com/egoist/mygo/pull/1662), review PRR_kwDOUtDQys8AAAABYzphkQ, point 3; TestBlocksSetEveryFrameStable failed before the fix with stale and replaced rows and allocations; TestBlocksHeightSnapshot reproduced missed in-place height, order, line, placement and ID changes.",
-  "promoted_to": "ui/editor/blocks_cache_test.go:TestBlocksSetEveryFrameStable"
-}
