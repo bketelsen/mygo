@@ -66,10 +66,8 @@ type heights struct {
 	wraps      wrapRows
 	wrapsSeen  uint64 // the version of wraps the spans' rows count
 	dirty      bool
-	// src is the last slice of blocks given, which the next is compared
-	// with by identity; scratch sorts them.
-	src     []block
-	srcLen  int
+	// blocks owns a value snapshot: callers may reuse their row buffer.
+	// scratch sorts changed input without reflection or new allocations.
 	scratch []block
 	// styles are the heights of the rows of styled lines, by line, where
 	// they are not lh (LineStyle).
@@ -222,20 +220,25 @@ func (h *heights) setHidden(spans []lineSpan) {
 }
 
 func (h *heights) setBlocks(blocks []block) {
-	if len(blocks) == len(h.blocks) && (len(blocks) == 0 || &blocks[0] == &h.src[0]) && h.srcLen == len(blocks) {
+	if slices.Equal(h.blocks, blocks) {
 		return
 	}
-	h.src, h.srcLen = blocks, len(blocks)
 	sorted := append(h.scratch[:0], blocks...)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		a, b := &sorted[i], &sorted[j]
+	slices.SortStableFunc(sorted, func(a, b block) int {
 		if a.line != b.line {
-			return a.line < b.line
+			return a.line - b.line
 		}
-		return !a.below && b.below
+		if a.below == b.below {
+			return 0
+		}
+		if a.below {
+			return 1
+		}
+		return -1
 	})
 	h.scratch = sorted
-	if !slices.EqualFunc(h.blocks, sorted, func(a, b block) bool { return a == b }) {
+	if !slices.Equal(h.blocks, sorted) {
+		clear(h.blocks)
 		h.blocks = append(h.blocks[:0], sorted...)
 		h.dirty = true
 	}

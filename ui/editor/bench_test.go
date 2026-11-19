@@ -299,6 +299,49 @@ func benchNote(n int) (string, []Replacement) {
 	return b.String(), rs
 }
 
+// BenchmarkCodeEditorTypeBlocks types in 10,000 lines and renders the
+// frame, with blocks moved through edits or set again in every build.
+// The folded mode also exercises the unchanged folds on each layout.
+func BenchmarkCodeEditorTypeBlocks(b *testing.B) {
+	for _, mode := range []string{"source", "moved", "set", "set-folded"} {
+		b.Run(mode, func(b *testing.B) {
+			text, _ := benchNote(10_000)
+			var bs []Block
+			for line := 0; line < 10_000; line += 4 {
+				bs = append(bs, tall(line, false, 20, "Block"))
+			}
+			st := &State{Buffer: NewBuffer(text)}
+			tt := ui.NewTester(func(c *ui.Context) {
+				if mode == "set" || mode == "set-folded" {
+					st.SetBlocks(bs)
+				}
+				View(c, st).Fill().AutoFocus()
+			}, 1200, 800)
+			tt.SetScale(2)
+			tt.Frame()
+			if mode != "source" {
+				st.SetBlocks(bs)
+			}
+			if mode == "set-folded" {
+				st.ed.folds = []fold{{100, 200}, {8_000, 8_100}}
+			}
+			mid := st.Buffer.Offset(Pos{Line: 5_000})
+			st.Select(mid, mid)
+			tt.Frame()
+			tt.Frame()
+			b.ReportAllocs()
+			for i := 0; b.Loop(); i++ {
+				if i%2 == 0 {
+					tt.Type("x")
+				} else {
+					tt.Key(0, ui.KeyBackspace)
+				}
+				tt.Frame()
+			}
+		})
+	}
+}
+
 // BenchmarkCodeEditorTypeReplacements types a character in the middle of
 // a note of 10,000 lines and renders the frame: with no replacements, as
 // its source shows; with those of a live preview, which the edits move;

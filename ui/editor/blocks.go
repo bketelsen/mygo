@@ -44,6 +44,17 @@ type appBlock struct {
 	measured bool // height is what the element's layout said
 }
 
+// rowHeight is the measured height, or the app's guess until measured.
+func (b *appBlock) rowHeight(lineHeight float32) float32 {
+	if b.measured {
+		return b.height
+	}
+	if b.Height > 0 {
+		return b.Height
+	}
+	return lineHeight
+}
+
 // builtBlock is the element the last build made of view.blocks[i], whose
 // layout says how high the block is.
 type builtBlock struct {
@@ -73,10 +84,12 @@ func (ed *editor) setBlocks(bs []Block) {
 	in := v.blockScratch[:0]
 	for _, b := range bs {
 		if b.Content != nil && b.Line >= 0 && b.Line < n {
-			in = append(in, appBlock{Block: b, at: v.text.LineStart(b.Line)})
+			in = append(in, appBlock{Block: b})
 		}
 	}
-	slices.SortStableFunc(in, func(a, b appBlock) int { return compareBlocks(&a, &b) })
+	if !slices.IsSortedFunc(in, func(a, b appBlock) int { return compareBlocks(&a, &b) }) {
+		slices.SortStableFunc(in, func(a, b appBlock) int { return compareBlocks(&a, &b) })
+	}
 	old := v.blocks
 	i := 0
 	for j := range in {
@@ -85,17 +98,24 @@ func (ed *editor) setBlocks(bs []Block) {
 			i++
 		}
 		if i < len(old) && compareBlocks(&old[i], b) == 0 {
-			b.id, b.height, b.measured = old[i].id, old[i].height, old[i].measured
+			// sync already settled this line's start after any edits.
+			b.at, b.id, b.height, b.measured = old[i].at, old[i].id, old[i].height, old[i].measured
 			i++
 			continue
 		}
 		v.nextBlock++
-		b.id = v.nextBlock
+		b.id, b.at = v.nextBlock, v.text.LineStart(b.Line)
+	}
+	// UI callbacks and options always update, but only effective row
+	// changes invalidate geometry. Duplicate identities match in order.
+	if !slices.EqualFunc(in, old, func(a, b appBlock) bool {
+		return a.id == b.id && compareBlocks(&a, &b) == 0 && a.rowHeight(v.lineHeight) == b.rowHeight(v.lineHeight)
+	}) {
+		v.blocksStale = true
 	}
 	// The slice given last is the scratch of the next, its functions let go.
 	clear(old)
 	v.blocks, v.blockScratch = in, old[:0]
-	v.blocksStale = true
 }
 
 // moveBlocks moves the blocks through changes of the text, by where
@@ -115,42 +135,43 @@ func (v *view) settleBlocks() {
 	}
 	for i := range v.blocks {
 		b := &v.blocks[i]
-		b.Line = v.text.LineOf(b.at)
+		line := v.text.LineOf(b.at)
+		if line != b.Line {
+			v.blocksStale = true
+		}
+		b.Line = line
 		b.at = v.text.LineStart(b.Line)
 	}
 	// Lines joined bring blocks above and below to one line.
 	if !slices.IsSortedFunc(v.blocks, func(a, b appBlock) int { return compareBlocks(&a, &b) }) {
 		slices.SortStableFunc(v.blocks, func(a, b appBlock) int { return compareBlocks(&a, &b) })
+		v.blocksStale = true
 	}
-	v.blocksStale = true
 }
 
 // blockRows returns the rows of the app's blocks, for the heights. A
 // block stays on a hidden line only when it stands in for a replacement,
-// and goes with one a fold hides. It is a new slice when they changed,
-// as the heights tell them by the slice.
+// and goes with one a fold hides. The row buffer is reused; heights keep
+// their own value snapshot, so in-place updates cannot be missed.
 func (ed *editor) blockRows() []block {
 	v := &ed.view
 	if len(v.blocks) == 0 && len(v.rows) == 0 {
-		return nil
-	}
-	spans := ed.hiddenSpans()
-	if !v.blocksStale && v.rowsHeight == v.lineHeight && slices.Equal(spans, v.rowsFolded) {
+		v.blocksStale = false
 		return v.rows
 	}
-	v.blocksStale, v.rowsHeight, v.rowsFolded = false, v.lineHeight, spans
+	spans := ed.hiddenSpans()
+	if !v.blocksStale && v.rowsHeight == v.lineHeight && v.rowsRepls == v.replVersion && slices.Equal(spans, v.rowsFolded) {
+		return v.rows
+	}
+	v.blocksStale, v.rowsHeight, v.rowsRepls = false, v.lineHeight, v.replVersion
+	v.rowsFolded = append(v.rowsFolded[:0], spans...)
 	folded := heights{hidden: spans}
-	rows := make([]block, len(v.blocks))
+	rows := slices.Grow(v.rows[:0], len(v.blocks))[:len(v.blocks)]
 	for i := range v.blocks {
 		b := &v.blocks[i]
-		h := b.height
-		if !b.measured {
-			if h = b.Height; h <= 0 {
-				h = v.lineHeight
-			}
-		}
-		_, sticky := ed.standIn(b.Line)
-		rows[i] = block{line: b.Line, below: !b.Above, height: h, kind: blockApp, from: b.id, to: i,
+		// The block itself supplies standIn's existence condition.
+		_, sticky := v.standInReplacement(b.Line)
+		rows[i] = block{line: b.Line, below: !b.Above, height: b.rowHeight(v.lineHeight), kind: blockApp, from: b.id, to: i,
 			sticky: sticky && !folded.isHidden(b.Line)}
 	}
 	v.rows = rows
@@ -163,10 +184,32 @@ func (ed *editor) blockRows() []block {
 // block, as at the start of what any replacement shows.
 func (ed *editor) standIn(line int) (Replacement, bool) {
 	v := &ed.view
-	t := &v.text
-	if len(v.blocks) == 0 || len(v.repls) == 0 {
+	if len(v.blocks) == 0 {
 		return Replacement{}, false
 	}
+	r, ok := v.standInReplacement(line)
+	if !ok {
+		return Replacement{}, false
+	}
+	t := &v.text
+	first, end := t.LineOf(r.Start), t.LineOf(r.End)
+	folded := heights{hidden: ed.hiddenSpans()}
+	j := sort.Search(len(v.blocks), func(j int) bool { return v.blocks[j].Line >= first })
+	for ; j < len(v.blocks) && v.blocks[j].Line < end; j++ {
+		if !folded.isHidden(v.blocks[j].Line) {
+			return r, true
+		}
+	}
+	return Replacement{}, false
+}
+
+// standInReplacement is the common eligibility condition for a sticky
+// block and standIn: an empty replacement hiding whole lines.
+func (v *view) standInReplacement(line int) (Replacement, bool) {
+	if len(v.repls) == 0 {
+		return Replacement{}, false
+	}
+	t := &v.text
 	off := t.LineStart(line)
 	i := sort.Search(len(v.repls), func(i int) bool { return v.repls[i].End > off })
 	if i >= len(v.repls) || v.repls[i].Start > off {
@@ -177,14 +220,7 @@ func (ed *editor) standIn(line int) (Replacement, bool) {
 	if r.shown() != "" || r.Start != t.LineStart(first) || end <= line {
 		return Replacement{}, false
 	}
-	folded := heights{hidden: ed.hiddenSpans()}
-	j := sort.Search(len(v.blocks), func(j int) bool { return v.blocks[j].Line >= first })
-	for ; j < len(v.blocks) && v.blocks[j].Line < end; j++ {
-		if !folded.isHidden(v.blocks[j].Line) {
-			return r, true
-		}
-	}
-	return Replacement{}, false
+	return r, true
 }
 
 // standInWithin returns the replacement of the block standing in nearest
@@ -294,10 +330,10 @@ func (ed *editor) measureBlock(built builtBlock) {
 		return
 	}
 	b := &v.blocks[built.i]
-	if !b.measured || b.height != r.H {
-		b.height, b.measured = r.H, true
+	if b.rowHeight(v.lineHeight) != r.H {
 		v.blocksStale = true
 	}
+	b.height, b.measured = r.H, true
 }
 
 // measureBlocks has the blocks built as high as this frame laid them

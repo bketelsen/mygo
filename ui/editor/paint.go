@@ -71,7 +71,7 @@ func (ed *editor) layout(w, h, scale float32) {
 }
 
 func mergeSpans(spans []lineSpan) []lineSpan {
-	sort.Slice(spans, func(i, j int) bool { return spans[i].from < spans[j].from })
+	slices.SortFunc(spans, func(a, b lineSpan) int { return a.from - b.from })
 	out := spans[:0]
 	for _, s := range spans {
 		if n := len(out); n > 0 && s.from <= out[n-1].to+1 {

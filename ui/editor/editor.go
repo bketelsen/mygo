@@ -157,9 +157,16 @@ type editor struct {
 	// selUndo and selRedo are the selections Undo Selection takes back.
 	selUndo, selRedo [][]sel
 	folds            []fold
-	marked           []ui.TextInputRange // the composition, in bytes per selection
-	markedActive     bool
-	autoclosed       []autoclose
+	// foldSnapshot and foldHidden cache merged fold spans by value, so
+	// every mutation path, including an edit in place, is observed.
+	foldSnapshot []fold
+	foldHidden   []lineSpan
+	// hiddenScratch is separate: hiddenLines appends replacement and
+	// diff spans and merges them in place, without changing foldHidden.
+	hiddenScratch []lineSpan
+	marked        []ui.TextInputRange // the composition, in bytes per selection
+	markedActive  bool
+	autoclosed    []autoclose
 
 	scrollY float64
 	scrollX float32
@@ -485,9 +492,14 @@ func (ed *editor) newSel(anchor, head int) sel {
 	return sel{anchor: anchor, head: head, goal: -1, id: ed.nextID}
 }
 
-// hiddenSpans returns the lines folds hide, merged.
+// hiddenSpans returns the lines folds hide, merged. The result is a
+// read-only cache, valid until the folds change.
 func (ed *editor) hiddenSpans() []lineSpan {
-	var spans []lineSpan
+	if slices.Equal(ed.folds, ed.foldSnapshot) {
+		return ed.foldHidden
+	}
+	ed.foldSnapshot = append(ed.foldSnapshot[:0], ed.folds...)
+	spans := ed.foldHidden[:0]
 	for _, f := range ed.folds {
 		if f.end > f.start {
 			spans = append(spans, lineSpan{f.start + 1, f.end})
@@ -502,19 +514,21 @@ func (ed *editor) hiddenSpans() []lineSpan {
 		}
 		out = append(out, s)
 	}
+	ed.foldHidden = out
 	return out
 }
 
 // hiddenLines returns every line that shows no rows: those folds hide,
 // those a diff collapses and those replacements hide, merged.
 func (ed *editor) hiddenLines() []lineSpan {
-	hidden := ed.hiddenSpans()
+	hidden := append(ed.hiddenScratch[:0], ed.hiddenSpans()...)
 	if ds, ok := ed.o.decor.(*diffSide); ok {
 		hidden = mergeSpans(append(hidden, ds.hidden()...))
 	}
 	if r := ed.view.replacedLines(); len(r) > 0 {
 		hidden = mergeSpans(append(hidden, r...))
 	}
+	ed.hiddenScratch = hidden
 	return hidden
 }
 

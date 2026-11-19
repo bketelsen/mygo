@@ -87,16 +87,20 @@ func (ed *editor) setReplacements(rs []Replacement) {
 		cross[k] = true
 	}
 	// The lines of the replacements that are not in both, or not alike.
+	changed := false
 	for i, j := 0, 0; i < len(old) || j < len(out); {
 		switch {
 		case j >= len(out) || i < len(old) && old[i].Start < out[j].Start:
+			changed = true
 			v.forgetLines(old[i].Start, old[i].End)
 			i++
 		case i >= len(old) || out[j].Start < old[i].Start:
+			changed = true
 			v.forgetLines(out[j].Start, out[j].End)
 			j++
 		default:
 			if !old[i].sameLayout(out[j]) {
+				changed = true
 				v.forgetLines(old[i].Start, old[i].End)
 				v.forgetLines(out[j].Start, out[j].End)
 			}
@@ -111,7 +115,9 @@ func (ed *editor) setReplacements(rs []Replacement) {
 	clear(old)
 	v.repls, v.replScratch = out, old[:0]
 	v.replCross, v.crossScratch = cross, oldCross[:0]
-	v.replsChanged()
+	if changed {
+		v.replsChanged()
+	}
 }
 
 // forgetLines lays out again the lines holding bytes a to b, and measures
@@ -138,11 +144,11 @@ func (v *view) forgetLines(a, b int) {
 	v.measured.forget(from, to)
 	v.wrapAt = min(v.wrapAt, from)
 	v.replHiddenOK = false
-	v.blocksStale = true
 }
 
 // replsChanged notes that the replacements changed or moved.
 func (v *view) replsChanged() {
+	v.replVersion++
 	v.replHiddenOK = false
 	v.contents = 0
 	for i := range v.repls {

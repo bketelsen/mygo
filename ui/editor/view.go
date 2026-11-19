@@ -67,16 +67,19 @@ type view struct {
 	replHidden              []lineSpan
 	replHiddenOK            bool
 	contents                int
+	// replVersion changes only when replacement layout or source changes.
+	replVersion uint64
 	// blocks are the app's elements between lines, sorted by where they
 	// go (State.SetBlocks), and blockScratch the slice the next are kept
 	// in; nextBlock is the last id given. rows are what they take in the
-	// heights, as of the line height rowsHeight and the folds rowsFolded,
-	// unless blocksStale.
+	// heights, as of rowsHeight, rowsFolded and rowsRepls, unless block
+	// identity, order, line, placement or effective height changed.
 	blocks, blockScratch []appBlock
 	nextBlock            int
 	rows                 []block
 	rowsHeight           float32
-	rowsFolded           []lineSpan
+	rowsFolded           []lineSpan // independent snapshot of the fold cache
+	rowsRepls            uint64
 	blocksStale          bool
 
 	lines  lineCache
