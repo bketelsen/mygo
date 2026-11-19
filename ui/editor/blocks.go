@@ -10,9 +10,9 @@ import (
 
 // Block is an element between the lines of the text, as Zed's blocks: an
 // image under the line naming it, say. It is no part of the text, which
-// stays the buffer's. On a line a replacement hides, it shows in place of
-// the lines the replacement covers, as a table drawn in place of its
-// source.
+// stays the buffer's. On a line an empty replacement hides, starting at a
+// line boundary, it shows in place of the lines the replacement covers,
+// as a table drawn in place of its source.
 type Block struct {
 	// Line is the line it goes with, from 0.
 	Line int
@@ -126,9 +126,9 @@ func (v *view) settleBlocks() {
 }
 
 // blockRows returns the rows of the app's blocks, for the heights. A
-// block stays on a line a replacement hides, and goes with one a fold
-// does. It is a new slice when they changed, as the heights tell them by
-// the slice.
+// block stays on a hidden line only when it stands in for a replacement,
+// and goes with one a fold hides. It is a new slice when they changed,
+// as the heights tell them by the slice.
 func (ed *editor) blockRows() []block {
 	v := &ed.view
 	if len(v.blocks) == 0 && len(v.rows) == 0 {
@@ -140,7 +140,6 @@ func (ed *editor) blockRows() []block {
 	}
 	v.blocksStale, v.rowsHeight, v.rowsFolded = false, v.lineHeight, spans
 	folded := heights{hidden: spans}
-	replaced := heights{hidden: v.replacedLines()}
 	rows := make([]block, len(v.blocks))
 	for i := range v.blocks {
 		b := &v.blocks[i]
@@ -150,8 +149,9 @@ func (ed *editor) blockRows() []block {
 				h = v.lineHeight
 			}
 		}
+		_, sticky := ed.standIn(b.Line)
 		rows[i] = block{line: b.Line, below: !b.Above, height: h, kind: blockApp, from: b.id, to: i,
-			sticky: replaced.isHidden(b.Line) && !folded.isHidden(b.Line)}
+			sticky: sticky && !folded.isHidden(b.Line)}
 	}
 	v.rows = rows
 	return rows

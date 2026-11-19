@@ -310,6 +310,85 @@ func TestBlocksStandIn(t *testing.T) {
 	}
 }
 
+// A hidden line's block stays visible exactly when it can stand in. A
+// partial-line or visible replacement keeps its text, not a second caret
+// target inside its hidden bytes.
+func TestBlocksStandInEligibility(t *testing.T) {
+	const src = "top\nprefix hidden\ncovered\nend"
+	for _, tc := range []struct {
+		name   string
+		mid    bool
+		text   string
+		stands bool
+	}{
+		{name: "whole-line empty", stands: true},
+		{name: "mid-line empty", mid: true},
+		{name: "whole-line shown text", text: "preview"},
+		{name: "mid-line shown text", mid: true, text: "preview"},
+	} {
+		for _, above := range []bool{false, true} {
+			t.Run(tc.name+map[bool]string{false: "/below", true: "/above"}[above], func(t *testing.T) {
+				ct := newEditorTest(t, "", src)
+				buf := ct.st.Buffer
+				start := buf.Offset(Pos{Line: 1})
+				if tc.mid {
+					start = strings.Index(src, "hidden")
+				}
+				r := Replacement{Start: start, End: buf.Offset(Pos{Line: 3}), Text: tc.text}
+				ct.st.SetReplacements([]Replacement{r})
+				ct.st.SetBlocks([]Block{tall(2, above, 60, "Covered")})
+				ct.settle()
+				ed := &ct.st.ed
+				if !ed.view.heights.isHidden(2) {
+					t.Fatal("the replacement's covered line is not hidden")
+				}
+				_, stands := ed.standIn(2)
+				if stands != tc.stands {
+					t.Errorf("stands in: %v, want %v", stands, tc.stands)
+				}
+				if rows := ed.blockRows(); len(rows) != 1 || rows[0].sticky != stands {
+					t.Errorf("block rows %+v disagree with stand-in %v", rows, stands)
+				}
+				room, built := ct.tt.Find("Covered")
+				if built != tc.stands {
+					t.Errorf("block built: %v, want %v", built, tc.stands)
+				}
+				if built {
+					ct.tt.ClickAt(room.X+10, room.Y+room.H/2)
+					if got := ct.st.Cursor(); got != r.Start {
+						t.Errorf("a press on the block went to %d, want replacement start %d", got, r.Start)
+					}
+				}
+				lh := float64(ed.view.lineHeight)
+				wantHeight := 2 * lh
+				if tc.stands {
+					wantHeight += 60
+				} else {
+					wantHeight += lh // The start line still shows its text.
+					wantText := tc.text
+					if tc.mid {
+						wantText = "prefix " + wantText
+					}
+					if got := ed.view.line(1).disp; got != wantText {
+						t.Errorf("displayed %q, want %q", got, wantText)
+					}
+				}
+				if got := ed.view.heights.total(); got != wantHeight {
+					t.Errorf("height %v, want %v", got, wantHeight)
+				}
+				if got := buf.String(); got != src {
+					t.Fatalf("the buffer changed to %q", got)
+				}
+				ct.caretTo(r.Start)
+				ct.run(MoveRight)
+				ct.wantCursor(r.End)
+				ct.run(MoveLeft)
+				ct.wantCursor(r.Start)
+			})
+		}
+	}
+}
+
 // Hidden lines next to a block standing in don't take the caret past it.
 func TestBlocksStandInBesideHidden(t *testing.T) {
 	src := "top\ngone\ntable\nend"
@@ -404,6 +483,17 @@ func TestBlocksStandInFolded(t *testing.T) {
 	}
 	if _, ok := ct.st.ed.standIn(1); ok {
 		t.Fatal("a folded block stands in")
+	}
+	if rows := ct.st.ed.blockRows(); len(rows) != 1 || rows[0].sticky {
+		t.Fatalf("a folded block has sticky rows: %+v", rows)
+	}
+	ct.st.Unfold(0)
+	ct.settle()
+	if _, ok := ct.tt.Find("Inner"); !ok {
+		t.Fatal("the unfolded stand-in block is not built")
+	}
+	if _, ok := ct.st.ed.standIn(1); !ok {
+		t.Fatal("the unfolded block does not stand in")
 	}
 }
 

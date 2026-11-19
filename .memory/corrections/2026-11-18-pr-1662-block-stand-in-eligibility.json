@@ -1,0 +1,7 @@
+{
+  "date": "2026-11-18",
+  "scope": "ui/editor",
+  "correction": "Use the stand-in eligibility condition for sticky app blocks. Blocks on lines hidden by a replacement with visible text or a mid-line start must not remain visible without stand-in hit testing, navigation and selection painting.",
+  "evidence": "egoist/mygo PR1662 (https://github.com/egoist/mygo/pull/1662), review PRR_kwDOUtDQys8AAAABYzphkQ, point 1; TestBlocksStandInEligibility failed before the fix with clicks at hidden offset 25 instead of replacement starts 11 or 4.",
+  "promoted_to": "ui/editor/blocks_test.go:TestBlocksStandInEligibility"
+}
